@@ -1,0 +1,10 @@
+{
+  "id": "xianxia",
+  "kind": "genre",
+  "name": "仙侠",
+  "fragments": {
+    "character": "character.md",
+    "prop": "prop.md",
+    "describe": "describe.md"
+  }
+}

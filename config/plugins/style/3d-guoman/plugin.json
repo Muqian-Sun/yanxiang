@@ -1,0 +1,19 @@
+{
+  "id": "3d-guoman",
+  "kind": "style",
+  "name": "3D 国漫",
+  "fragments": {
+    "writer": "writer.md",
+    "character": "character.md"
+  },
+  "imagePrefix": {
+    "portrait": "image/character.md",
+    "turnaround": "image/character.md",
+    "face": "image/character.md",
+    "prop-sheet": "image/prop.md",
+    "location": "image/scene.md",
+    "location-view": "image/scene.md",
+    "keyframe": "image/keyframe.md"
+  },
+  "styleRef": "style-ref.png"
+}

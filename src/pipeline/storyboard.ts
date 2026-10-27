@@ -1,0 +1,357 @@
+import { imagePrompt } from '../compose.js'
+import { image } from '../jobs/images.js'
+import type { Section } from '../runner.js'
+import type { Artifact, Store } from '../store/store.js'
+import { CARDS, MAIN_VIEW, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
+import type { NodeDef, Ready } from './engine.js'
+import {
+  EPISODE, episode, fmtBeats, imageParams, lockedImage, names, pick, revision, scopeOf, styleRefMedia, text,
+  type EntityEnv,
+} from './entities.js'
+
+type Segment = PlanT['segments'][number]
+type Cut = TimelineT['cuts'][number]
+
+const json = (a: Artifact) => JSON.stringify(a.payload, null, 2)
+const segmentScope = (id: string) => `${EPISODE}/${id}`
+/** How a cut is named to the writers, and the tail of its scope. */
+const cutId = (segmentId: string, index: number) => `${segmentId}/c${index}`
+const cutScope = (segmentId: string, index: number) => `${EPISODE}/${cutId(segmentId, index)}`
+const viewScope = (location: string, name: string) => `${scopeOf('loc', location)}/${name}`
+
+function parseCut(scope: string) {
+  const [ep, segmentId, cut] = scope.split('/') as [string, string, string]
+  if (ep !== EPISODE || !segmentId || !cut?.startsWith('c')) throw new Error(`不是切点作用域：${scope}`)
+  return { segmentId, cutIndex: Number(cut.slice(1)) }
+}
+
+function parseView(scope: string) {
+  const [ep, loc, location, name] = scope.split('/')
+  if (ep !== EPISODE || loc !== 'loc' || !location || !name) throw new Error(`不是换机位作用域：${scope}`)
+  return { location, name }
+}
+
+function planOf(store: Store): { artifact: Artifact; plan: PlanT } | undefined {
+  const artifact = store.locked('segment_plan', EPISODE)
+  return artifact ? { artifact, plan: artifact.payload as PlanT } : undefined
+}
+
+/** Changes accumulated from the script up to, but not including, this beat. */
+function stateBefore(store: Store, beatId: string): string[] {
+  const changes: string[] = []
+  for (const beat of episode(store)!.beats) {
+    if (beat.id === beatId) break
+    changes.push(...beat.changes)
+  }
+  return changes
+}
+
+function presentNames(store: Store, segment: Segment): string[] {
+  const ep = episode(store)!
+  const beats = ep.beats.filter(b => segment.beats.includes(b.id))
+  const roster = [...ep.roster.characters.map(c => c.name), ...ep.roster.locations.map(l => l.name), ...ep.roster.props.map(p => p.name)]
+  return roster.filter(name => name === segment.location || beats.some(b => b.action.includes(name) || b.lines.some(l => l.speaker === name || l.text.includes(name))))
+}
+
+function lastCutBlurb(tl: TimelineT): string {
+  const cut = tl.cuts.at(-1)!
+  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后一秒：${tl.timeline.at(-1)?.text ?? ''}`
+}
+
+function rootLocks(store: Store): number[] | undefined {
+  const scopes = (['char', 'loc', 'prop'] as const).flatMap(kind => names(store, kind).map(name => scopeOf(kind, name)))
+  const locks = scopes.map(s => store.locked('entity_lock', s))
+  if (locks.some(l => !l)) return undefined
+  return locks.map(l => l!.id)
+}
+
+/**
+ * Cuts that get a keyframe, with their segment and locked timeline. The first cut of a
+ * continuing segment is carried by the replayed tail of the previous one (design 07).
+ */
+function keyframeCuts(store: Store): { segment: Segment; timeline: Artifact; cut: Cut }[] {
+  const planned = planOf(store)
+  if (!planned) return []
+  return planned.plan.segments.flatMap(segment => {
+    const timeline = store.locked('timeline', segmentScope(segment.id))
+    if (!timeline) return []
+    return (timeline.payload as TimelineT).cuts.filter(cut => !(segment.continues && cut.index === 1)).map(cut => ({ segment, timeline, cut }))
+  })
+}
+
+function cutAt(store: Store, scope: string) {
+  const { segmentId, cutIndex } = parseCut(scope)
+  const segment = planOf(store)?.plan.segments.find(s => s.id === segmentId)
+  const timeline = store.locked('timeline', segmentScope(segmentId))
+  const cut = (timeline?.payload as TimelineT | undefined)?.cuts.find(c => c.index === cutIndex)
+  return segment && timeline && cut ? { segment, timeline, cut, id: cutId(segmentId, cutIndex) } : undefined
+}
+
+/** The camera position a cut was grouped into, and the picture standing for it once locked. */
+function viewOf(store: Store, location: string, id: string) {
+  const groups = store.locked('view_plan', scopeOf('loc', location))
+  const view = (groups?.payload as ViewGroupsT | undefined)?.views.find(v => v.cuts.includes(id))
+  if (!groups || !view) return undefined
+  const main = view.name === MAIN_VIEW
+  return {
+    groups,
+    label: main ? `${location}的主图` : `${location}的${view.name}`,
+    picture: main ? lockedImage(store, scopeOf('loc', location)) : lockedImage(store, viewScope(location, view.name)),
+  }
+}
+
+const plan: NodeDef = {
+  name: 'plan',
+  pool: 'text',
+  output: 'segment_plan',
+  scopes: () => [EPISODE],
+  ready(store): Ready {
+    const ep = episode(store)
+    const locks = rootLocks(store)
+    if (!ep || !locks) return { ok: false }
+    return { ok: true, inputs: [ep.script.id, ...locks] }
+  },
+  async run(env, scope, run, inputs) {
+    const { store } = env
+    const ep = episode(store)!
+    const project = store.project() as { seconds_min: number; seconds_max: number }
+    const entities = [...names(store, 'char'), ...names(store, 'loc'), ...names(store, 'prop')]
+    const result = await env.text({
+      card: CARDS['segment-plan']!,
+      sections: [
+        { title: '剧本', body: fmtBeats(store, ep.beats.map(b => b.id)) },
+        { title: '已定的人物、地点、道具', body: entities.join('、') },
+        { title: '地点只能写这些', body: names(store, 'loc').join('、') },
+        { title: '单集时长', body: `${project.seconds_min}–${project.seconds_max} 秒` },
+        ...revision(store, run, json),
+      ],
+      data: { beats: ep.beats.map(b => b.id), lines: [] as string[], min: project.seconds_min, max: project.seconds_max, locations: names(store, 'loc') },
+      tag: `segment-plan-${scope}-${run.id}`,
+      nodeRunId: run.id,
+    })
+    return [store.addArtifact({ kind: 'segment_plan', scope, payload: result.output, inputs, prompt_version: result.promptVersion, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
+const timeline: NodeDef = {
+  name: 'timeline',
+  pool: 'text',
+  output: 'timeline',
+  scopes(store) {
+    return planOf(store)?.plan.segments.map(s => segmentScope(s.id)) ?? []
+  },
+  ready(store, scope): Ready {
+    const planned = planOf(store)
+    if (!planned) return { ok: false }
+    const segment = planned.plan.segments.find(s => segmentScope(s.id) === scope)
+    if (!segment) return { ok: false }
+    const index = planned.plan.segments.indexOf(segment)
+    const previous = segment.continues ? store.locked('timeline', segmentScope(planned.plan.segments[index - 1]!.id)) : undefined
+    if (segment.continues && !previous) return { ok: false }
+    const present = presentNames(store, segment)
+    const locks = present.flatMap(name => {
+      const kind = names(store, 'char').includes(name) ? 'char' : names(store, 'loc').includes(name) ? 'loc' : 'prop'
+      const lock = store.locked('entity_lock', scopeOf(kind, name))
+      return lock ? [lock.id] : []
+    })
+    if (locks.length < present.length) return { ok: false }
+    return { ok: true, inputs: [planned.artifact.id, ...locks, ...(previous ? [previous.id] : [])] }
+  },
+  async run(env, scope, run, inputs) {
+    const { store } = env
+    const planned = planOf(store)!
+    const index = planned.plan.segments.findIndex(s => segmentScope(s.id) === scope)
+    const segment = planned.plan.segments[index]!
+    const prevSeg = planned.plan.segments[index - 1]
+    const nextSeg = planned.plan.segments[index + 1]
+    const previous = segment.continues && prevSeg ? store.locked('timeline', segmentScope(prevSeg.id)) : undefined
+    const sections: Section[] = [
+      { title: '这一段', body: `${segment.id}，${segment.seconds} 秒，地点：${segment.location}${segment.continues ? '，承接上一段' : ''}\n概要：${segment.summary}` },
+      { title: '这一段的剧本', body: fmtBeats(store, segment.beats) },
+      { title: '前一段', body: prevSeg?.summary ?? '' },
+      { title: '上一段最后一个镜头', body: previous ? lastCutBlurb(previous.payload as TimelineT) : '' },
+      { title: '后一段', body: nextSeg?.summary ?? '' },
+      { title: '出场的人物、地点、道具', body: presentNames(store, segment).join('、') },
+      { title: '这一段开始时的状态', body: stateBefore(store, segment.beats[0]!).join('\n') },
+      ...revision(store, run, json),
+    ]
+    const lines = episode(store)!.beats.filter(b => segment.beats.includes(b.id)).flatMap(b => b.lines)
+    const result = await env.text({
+      card: CARDS.timeline!,
+      sections,
+      data: { seconds: segment.seconds, lines },
+      tag: `timeline-${scope.replaceAll('/', '-')}-${run.id}`,
+      nodeRunId: run.id,
+    })
+    return [store.addArtifact({ kind: 'timeline', scope, payload: result.output, inputs, prompt_version: result.promptVersion, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
+/** Groups every keyframe cut at one location into a few camera positions, once all its timelines are written. */
+const views: NodeDef = {
+  name: 'views',
+  pool: 'text',
+  output: 'view_plan',
+  scopes(store) {
+    return [...new Set(planOf(store)?.plan.segments.map(s => scopeOf('loc', s.location)) ?? [])]
+  },
+  ready(store, scope): Ready {
+    const planned = planOf(store)
+    const brief = store.locked('entity_brief', scope)
+    if (!planned || !brief) return { ok: false }
+    const here = planned.plan.segments.filter(s => scopeOf('loc', s.location) === scope)
+    const timelines = here.map(s => store.locked('timeline', segmentScope(s.id)))
+    if (timelines.some(t => !t)) return { ok: false }
+    return { ok: true, inputs: [brief.id, ...timelines.map(t => t!.id)] }
+  },
+  async run(env, scope, run, inputs) {
+    const { store } = env
+    const cuts = keyframeCuts(store).filter(c => scopeOf('loc', c.segment.location) === scope)
+    const result = await env.text({
+      card: CARDS['view-groups']!,
+      sections: [
+        { title: '地点的外观要点', body: text(store.artifact(inputs[0]!)) },
+        { title: '镜头', body: cuts.map(c => `${cutId(c.segment.id, c.cut.index)}｜镜头：${c.cut.shot}｜运镜：${c.cut.camera}｜视角：${c.cut.present.view}`).join('\n') },
+        ...revision(store, run, json),
+      ],
+      data: { cuts: cuts.map(c => cutId(c.segment.id, c.cut.index)) },
+      tag: `view-groups-${scope.replaceAll('/', '-')}-${run.id}`,
+      nodeRunId: run.id,
+    })
+    return [store.addArtifact({ kind: 'view_plan', scope, payload: result.output, inputs, prompt_version: result.promptVersion, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
+const view: NodeDef = {
+  name: 'view',
+  pool: 'image',
+  output: 'entity_image',
+  review: 6,
+  images: 1,
+  scopes(store) {
+    return views.scopes(store).flatMap(scope => {
+      const groups = store.locked('view_plan', scope)?.payload as ViewGroupsT | undefined
+      return groups?.views.filter(v => v.name !== MAIN_VIEW).map(v => `${scope}/${v.name}`) ?? []
+    })
+  },
+  ready(store, scope): Ready {
+    const { location } = parseView(scope)
+    const root = lockedImage(store, scopeOf('loc', location))
+    const style = store.locked('style_ref', 'p')
+    const brief = store.locked('entity_brief', scopeOf('loc', location))
+    const groups = store.locked('view_plan', scopeOf('loc', location))
+    if (!root || !style || !brief || !groups) return { ok: false }
+    return { ok: true, inputs: [root.lock.id, style.id, brief.id, groups.id] }
+  },
+  async run(env, scope, run, inputs) {
+    const e = env as EntityEnv
+    const { location, name } = parseView(scope)
+    const camera = (e.store.artifact(inputs[3]!).payload as ViewGroupsT).views.find(v => v.name === name)!.camera
+    const desc = await e.text({
+      card: CARDS['location-view-desc']!,
+      sections: [
+        { title: '地点的外观要点', body: text(e.store.artifact(inputs[2]!)) },
+        { title: '需要的视角', body: camera },
+        ...revision(e.store, run, a => (a.payload as { prompt: string }).prompt),
+      ],
+      tag: `location-view-desc-${scope.replaceAll('/', '-')}-${run.id}`,
+      nodeRunId: run.id,
+    })
+    if (!e.images) throw new Error('没有配置出图服务')
+    const root = e.store.artifact((e.store.artifact(inputs[0]!).payload as { image_id: number }).image_id)
+    const refs = [{ label: `${location}的主图`, media: root.media_id! }, { label: '风格参考图', media: styleRefMedia(e) }]
+    const prompt = imagePrompt(e.root, e.style, 'location-view', desc.output as string, refs.map(r => r.label))
+    const drawn = await image(e.store, e.images, { type: 'location-view', prompt, params: imageParams('location-view'), references: refs.map(r => r.media), node_run_id: run.id, candidate: 1 }, e.sleep)
+    return [e.store.addArtifact({ kind: 'entity_image', scope, payload: { job_id: drawn.job, prompt }, media_id: drawn.media, inputs, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
+const kfdesc: NodeDef = {
+  name: 'kfdesc',
+  pool: 'text',
+  output: 'keyframe_desc',
+  scopes(store) {
+    return keyframeCuts(store).map(({ segment, cut }) => cutScope(segment.id, cut.index))
+  },
+  ready(store, scope): Ready {
+    const at = cutAt(store, scope)
+    if (!at) return { ok: false }
+    const place = viewOf(store, at.segment.location, at.id)
+    if (!place?.picture) return { ok: false }
+    const briefs = [
+      ...at.cut.present.characters.map(name => store.locked('entity_brief', scopeOf('char', name))),
+      store.locked('entity_brief', scopeOf('loc', at.segment.location)),
+    ]
+    if (briefs.some(b => !b)) return { ok: false }
+    return { ok: true, inputs: [at.timeline.id, place.groups.id, place.picture.lock.id, ...briefs.map(b => b!.id)] }
+  },
+  async run(env, scope, run, inputs) {
+    const { store } = env
+    const { segment, timeline, cut, id } = cutAt(store, scope)!
+    const tl = timeline.payload as TimelineT
+    const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
+    const refs = [
+      ...cut.present.characters.map(name => `${name}的定妆照`),
+      viewOf(store, segment.location, id)!.label,
+      ...cut.present.props.map(name => `${name}的设定图`),
+      '风格参考图',
+    ].map((label, i) => `图 ${i + 1}：${label}`)
+    const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', scopeOf('char', name))!), '主色').replace('主色：', '')}`)
+    const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', segment.location))!), '陈设')
+    const atCut = [...stateBefore(store, segment.beats[0]!), ...tl.timeline.filter(e => e.second < cut.start).flatMap(e => e.changes)]
+    const result = await env.text({
+      card: CARDS['keyframe-desc']!,
+      sections: [
+        { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
+        { title: '参考图', body: refs.join('\n') },
+        { title: '人物主色', body: colors.join('\n') },
+        { title: '场内陈设', body: furnishing },
+        { title: '此刻的状态', body: atCut.join('\n') },
+        ...revision(store, run, a => (a.payload as { text: string }).text),
+      ],
+      tag: `keyframe-desc-${scope.replaceAll('/', '-')}-${run.id}`,
+      nodeRunId: run.id,
+    })
+    return [store.addArtifact({ kind: 'keyframe_desc', scope, payload: { at: cut.start, text: result.output }, inputs, prompt_version: result.promptVersion, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
+const keyframe: NodeDef = {
+  name: 'keyframe',
+  pool: 'image',
+  output: 'keyframe',
+  review: 6,
+  images: 1,
+  scopes: kfdesc.scopes,
+  ready(store, scope): Ready {
+    const desc = store.locked('keyframe_desc', scope)
+    const at = cutAt(store, scope)
+    if (!desc || !at) return { ok: false }
+    const style = store.locked('style_ref', 'p')
+    const place = viewOf(store, at.segment.location, at.id)
+    const chars = at.cut.present.characters.map(name => lockedImage(store, scopeOf('char', name)))
+    const props = at.cut.present.props.map(name => lockedImage(store, scopeOf('prop', name)))
+    if (!style || !place?.picture || chars.some(c => !c) || props.some(p => !p)) return { ok: false }
+    return { ok: true, inputs: [desc.id, place.picture.lock.id, style.id, ...chars.map(c => c!.lock.id), ...props.map(p => p!.lock.id)] }
+  },
+  async run(env, scope, run, inputs) {
+    const e = env as EntityEnv
+    const { segment, cut, id } = cutAt(e.store, scope)!
+    const mediaOf = (lockId: number) => e.store.artifact((e.store.artifact(lockId).payload as { image_id: number }).image_id).media_id!
+    const chars = inputs.slice(3, 3 + cut.present.characters.length)
+    const props = inputs.slice(3 + cut.present.characters.length)
+    const refs = [
+      ...chars.map((lockId, i) => ({ label: `${cut.present.characters[i]}的定妆照`, media: mediaOf(lockId) })),
+      { label: viewOf(e.store, segment.location, id)!.label, media: mediaOf(inputs[1]!) },
+      ...props.map((lockId, i) => ({ label: `${cut.present.props[i]}的设定图`, media: mediaOf(lockId) })),
+      { label: '风格参考图', media: styleRefMedia(e) },
+    ]
+    if (!e.images) throw new Error('没有配置出图服务')
+    const body = (e.store.artifact(inputs[0]!).payload as { text: string }).text
+    const prompt = imagePrompt(e.root, e.style, 'keyframe', body, refs.map(r => r.label))
+    const drawn = await image(e.store, e.images, { type: 'keyframe', prompt, params: imageParams('keyframe'), references: refs.map(r => r.media), node_run_id: run.id, candidate: 1 }, e.sleep)
+    return [e.store.addArtifact({ kind: 'keyframe', scope, payload: { job_id: drawn.job, prompt }, media_id: drawn.media, inputs, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
+export const STORYBOARD_NODES: NodeDef[] = [plan, timeline, views, view, kfdesc, keyframe]

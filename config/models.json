@@ -1,0 +1,13 @@
+{
+  "providers": {
+    "qiniu": {
+      "protocol": "anthropic",
+      "baseUrl": "https://xapi.qiniu.io",
+      "auth": "both",
+      "keyRef": { "service": "manju", "account": "custom-qiniu" }
+    }
+  },
+  "text": { "provider": "qiniu", "model": "gpt-6.1-sol" },
+  "image": { "baseUrl": "https://gateway.yir.ai", "model": "openai/gpt-image-2.5-sunburst", "keyEnv": "IMAGE_API_KEY", "maxCostUsd": "0.10" },
+  "tasks": {}
+}
