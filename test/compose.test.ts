@@ -20,8 +20,11 @@ test('the parts come in order: style, references, body, fixed part', () => {
   expect(parts[3]).toContain('只改变观看的位置和方向')
 })
 
-test('a keyframe has no fixed part, and the empty file adds nothing', () => {
-  expect(imagePrompt(ROOT, style(), 'keyframe', '主体').split('\n\n')).toHaveLength(2)
+test('a keyframe keeps the room of its first reference and does not add writing', () => {
+  const parts = imagePrompt(ROOT, style(), 'keyframe', '主体', ['封剑洞的主图']).split('\n\n')
+  expect(parts).toHaveLength(4)
+  expect(parts[3]).toContain('图 1 是这个机位的空房间')
+  expect(parts[3]).toContain('不要补图 1 上没有的字')
 })
 
 test('the shipped style has its own style reference', () => {

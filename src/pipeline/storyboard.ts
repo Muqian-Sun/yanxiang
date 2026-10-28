@@ -118,8 +118,6 @@ function stagings(store: Store, segment: Segment, location?: string) {
   return locked.every(s => s.blocking) ? locked.map(s => ({ scene: s.scene, blocking: s.blocking! })) : undefined
 }
 
-const layout = (brief: string) => ['格局', '陈设', '道具位置', '门窗外'].map(key => pick(brief, key)).filter(Boolean).join('\n')
-
 function lastCutBlurb(tl: TimelineT): string {
   const cut = tl.cuts.at(-1)!
   return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后几秒：${momentsOf(tl).at(-1)?.text ?? ''}\n底声：${tl.ambience}`
@@ -307,7 +305,6 @@ const timeline: NodeDef = {
       { title: '上一段最后一个镜头', body: previous ? lastCutBlurb(previous.payload as TimelineT) : '' },
       { title: '后一段', body: nextSeg?.summary ?? '' },
       { title: '出场的人物、地点、道具', body: presentNames(store, segment).join('、') },
-      { title: '地点的格局', body: segmentLocations(store, segment).map(l => `${l}\n${layout(text(store.locked('entity_brief', scopeOf('loc', l))!))}`).join('\n\n') },
       { title: '站位', body: stagings(store, segment)!.map(s => stagingOf(s.scene, s.blocking.payload as BlockingT, segment)).join('\n\n') },
       { title: '这一段开始时的状态', body: stateBefore(store, segment.beats[0]!).join('\n') },
       ...revision(store, run, json),
@@ -377,19 +374,17 @@ const view: NodeDef = {
     const { location } = parseView(scope)
     const root = lockedImage(store, scopeOf('loc', location))
     const style = store.locked('style_ref', 'p')
-    const brief = store.locked('entity_brief', scopeOf('loc', location))
     const groups = store.locked('view_plan', scopeOf('loc', location))
-    if (!root || !style || !brief || !groups) return { ok: false }
-    return { ok: true, inputs: [root.lock.id, style.id, brief.id, groups.id] }
+    if (!root || !style || !groups) return { ok: false }
+    return { ok: true, inputs: [root.lock.id, style.id, groups.id] }
   },
   async run(env, scope, run, inputs) {
     const e = env as EntityEnv
     const { location, name } = parseView(scope)
-    const camera = (e.store.artifact(inputs[3]!).payload as ViewGroupsT).views.find(v => v.name === name)!.camera
+    const camera = (e.store.artifact(inputs[2]!).payload as ViewGroupsT).views.find(v => v.name === name)!.camera
     const desc = await e.text({
       card: CARDS['location-view-desc']!,
       sections: [
-        { title: '地点的外观要点', body: text(e.store.artifact(inputs[2]!)) },
         { title: '需要的视角', body: camera },
         ...revision(e.store, run, a => (a.payload as { prompt: string }).prompt),
       ],
@@ -405,21 +400,21 @@ const view: NodeDef = {
   },
 }
 
-/** What a cut's camera position shows, left to right, for a writer who cannot see its picture. */
-function viewText(store: Store, location: string, id: string): string {
-  const view = (store.locked('view_plan', scopeOf('loc', location))!.payload as ViewGroupsT).views.find(v => v.cuts.includes(id))!
-  if (view.name === MAIN_VIEW) return `主图：${text(store.locked('entity_desc', scopeOf('loc', location))!)}`
-  // Views drawn before 2026-10-28 kept only the whole prompt.
-  const picture = viewOf(store, location, id)!.picture!.image.payload as { desc?: string; prompt: string }
-  return `相机：${view.camera}\n这个机位的图：${picture.desc ?? picture.prompt}`
+/** Where the camera stands. The room itself stays the locked picture, so the old description is not repeated. */
+function viewText(store: Store, id: string): string {
+  const at = cutAt(store, `${EPISODE}/${id}`)!
+  const view = (store.locked('view_plan', scopeOf('loc', cutLocation(at.segment, at.cut)))!.payload as ViewGroupsT).views.find(v => v.cuts.includes(id))!
+  if (view.name === MAIN_VIEW) return '相机就是主图的机位。房间以主图为准。'
+  return `相机：${view.camera}\n房间以这个机位的图为准。`
 }
 
-/** The pictures a keyframe is drawn from, as its description and its prompt number them. */
+/** The pictures a keyframe is drawn from, as its description and its prompt number them. The room is always the empty picture for this camera, never an earlier keyframe: a closer shot of the same facing still has to start from the room, or hands and the table get redrawn on top of people who are already in frame. */
 function keyframeLabels(store: Store, scope: string): string[] {
   const { segment, cut, id } = cutAt(store, scope)!
+  const room = viewOf(store, cutLocation(segment, cut), id)!.label
   return [
+    room,
     ...cut.present.characters.map(name => figure(store, segment, cut, name).label),
-    viewOf(store, cutLocation(segment, cut), id)!.label,
     ...cut.present.props.map(name => `${name}的设定图`),
     '风格参考图',
   ]
@@ -443,11 +438,7 @@ const kfdesc: NodeDef = {
     const place = viewOf(store, cutLocation(at.segment, at.cut), at.id)
     if (!place?.picture) return { ok: false }
     const location = cutLocation(at.segment, at.cut)
-    const briefs = [
-      ...at.cut.present.characters.map(name => store.locked('entity_brief', lookAt(store, name, at.segment.beats[0]!))),
-      store.locked('entity_brief', scopeOf('loc', location)),
-      store.locked('entity_desc', scopeOf('loc', location)),
-    ]
+    const briefs = at.cut.present.characters.map(name => store.locked('entity_brief', lookAt(store, name, at.segment.beats[0]!)))
     const staged = stagings(store, at.segment, location)
     if (briefs.some(b => !b) || !staged) return { ok: false }
     return { ok: true, inputs: [at.timeline.id, place.groups.id, place.picture.lock.id, ...briefs.map(b => b!.id), ...staged.map(s => s.blocking.id)] }
@@ -460,7 +451,6 @@ const kfdesc: NodeDef = {
     const refs = keyframeLabels(store, scope).map((label, i) => `图 ${i + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', lookAt(store, name, segment.beats[0]!))!), '主色').replace('主色：', '')}`)
     const location = cutLocation(segment, cut)
-    const brief = text(store.locked('entity_brief', scopeOf('loc', location))!)
     const atCut = cutState(store, scope)!
     const result = await env.text({
       card: CARDS['keyframe-desc']!,
@@ -468,9 +458,7 @@ const kfdesc: NodeDef = {
         { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second && second.to - second.from > 1 ? `（这个镜头第 ${second.from}–${second.to} 秒的全部内容，关键帧只取开头这一刻）` : ''}${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
         { title: '参考图', body: refs.join('\n') },
         { title: '人物主色', body: colors.join('\n') },
-        { title: '这个视角', body: viewText(store, location, id) },
-        { title: '场内陈设', body: pick(brief, '陈设') },
-        { title: '光源', body: pick(brief, '光源') },
+        { title: '这个视角', body: viewText(store, id) },
         { title: '站位', body: stagings(store, segment, location)!.map(s => stagingOf(s.scene, s.blocking.payload as BlockingT, segment)).join('\n\n') },
         { title: '此刻的状态', body: atCut.join('\n') },
         ...revision(store, run, a => (a.payload as { text: string }).text),
@@ -504,9 +492,13 @@ const keyframe: NodeDef = {
   async run(env, scope, run, inputs) {
     const e = env as EntityEnv
     const { cut } = cutAt(e.store, scope)!
-    const mediaOf = (lockId: number) => e.store.artifact((e.store.artifact(lockId).payload as { image_id: number }).image_id).media_id!
-    // In the order of keyframeLabels: the people, the view, the props, the style picture.
-    const media = [...inputs.slice(3, 3 + cut.present.characters.length).map(mediaOf), mediaOf(inputs[1]!), ...inputs.slice(3 + cut.present.characters.length).map(mediaOf), styleRefMedia(e)]
+    const mediaOf = (id: number) => {
+      const artifact = e.store.artifact(id)
+      if (artifact.media_id) return artifact.media_id
+      return e.store.artifact((artifact.payload as { image_id: number }).image_id).media_id!
+    }
+    // In the order of keyframeLabels: the room, the people, the props, the style picture.
+    const media = [mediaOf(inputs[1]!), ...inputs.slice(3, 3 + cut.present.characters.length).map(mediaOf), ...inputs.slice(3 + cut.present.characters.length).map(mediaOf), styleRefMedia(e)]
     const refs = keyframeLabels(e.store, scope).map((label, i) => ({ label, media: media[i]! }))
     if (!e.images) throw new Error('没有配置出图服务')
     const prompt = keyframePrompt(e, scope, (e.store.artifact(inputs[0]!).payload as { text: string }).text)
