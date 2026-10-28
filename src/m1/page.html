@@ -26,7 +26,7 @@
 }
 * { box-sizing: border-box }
 html { scroll-padding-top: 150px; scroll-padding-bottom: 200px; -webkit-text-size-adjust: 100% }
-html, body { margin: 0 }
+html, body { margin: 0; height: 100%; overflow: hidden }
 @media (pointer: fine) { html { overscroll-behavior: none } }
 body { font: 14px/1.6 var(--ui); background: var(--moon); color: var(--ink); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: rgba(31, 78, 110, .14) }
 button, select, textarea, input { font: inherit; color: inherit }
@@ -39,8 +39,8 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .skip:focus-visible { top: 12px }
 
 /* ---------- side ---------- */
-.app { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh }
-.side { position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain; background: var(--rail); border-right: 1px solid var(--line); padding: 18px 12px 18px; display: flex; flex-direction: column; gap: 16px }
+.app { display: grid; grid-template-columns: 232px minmax(0, 1fr); height: 100%; min-height: 0 }
+.side { height: 100%; overflow-y: auto; overscroll-behavior: contain; background: var(--rail); border-right: 1px solid var(--line); padding: 18px 12px 18px; display: flex; flex-direction: column; gap: 16px }
 .brand { display: flex; align-items: baseline; gap: 10px; padding: 0 8px }
 .brand b { font: 600 22px/1 var(--ui); letter-spacing: .12em; color: var(--azurite) }
 .brand span { font-size: 12px; color: var(--ink-2) }
@@ -64,8 +64,10 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .nav .none { padding: 4px 10px; font-size: 12px; color: var(--ink-2) }
 
 /* ---------- top ---------- */
-.mainwrap { min-width: 0; display: flex; flex-direction: column }
-.top { position: sticky; top: 0; z-index: 4; background: rgba(236, 239, 238, .94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); padding: 14px 32px 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px 36px; align-items: end }
+.mainwrap { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column }
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) }
+.workspace.with-talk { grid-template-columns: minmax(0, 1fr) 340px }
+.top { flex: none; z-index: 4; background: rgba(236, 239, 238, .94); border-bottom: 1px solid var(--line); padding: 14px 32px 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px 36px; align-items: end }
 .top h1 { margin: 0; font: 600 20px/1.3 var(--ui); text-wrap: balance }
 .top .sub { color: var(--ink-2); font-size: 13px; margin-top: 2px }
 .phases { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px }
@@ -76,7 +78,8 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .segbar i { flex: 1; background: var(--line); display: flex; overflow: hidden; border-radius: 1px }
 .segbar b { height: 100% }
 .segbar b.g { background: var(--malachite) } .segbar b.y { background: var(--gold) } .segbar b.n { background: var(--azurite) } .segbar b.r { background: var(--bad) }
-main { padding: 26px 32px 220px; max-width: 1600px; width: 100% }
+main { padding: 26px 32px 36px; width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain }
+body.has-dock main { padding-bottom: 200px }
 main:focus { outline: none }
 
 /* ---------- common ---------- */
@@ -143,6 +146,8 @@ textarea::placeholder { color: #87949A }
 .well.square { aspect-ratio: 1 }
 .zoom { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in }
 .zoom img { display: block; width: 100%; height: auto; object-fit: contain }
+.stage .zoom, .cand .zoom { display: flex; justify-content: center; background: var(--well) }
+.stage .zoom img, .cand .zoom img { width: auto; max-width: 100%; max-height: 72vh }
 .zoom:focus-visible { outline: 2px solid #9CC3DD; outline-offset: -4px }
 video, audio { max-width: 100%; display: block }
 .well video { width: 100%; background: #000 }
@@ -156,7 +161,6 @@ video, audio { max-width: 100%; display: block }
 .rv-head .sp { flex: 1 }
 .up { color: var(--ink-2); font-weight: 500; margin-right: .5em }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: start }
-.stage .zoom img { max-height: 74vh }
 .desk { display: flex; flex-direction: column; gap: 16px; min-width: 0 }
 .desk.wide { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 28px; margin-top: 18px; align-items: start }
 .desk .info { display: flex; flex-direction: column; gap: 10px; min-width: 0 }
@@ -170,7 +174,22 @@ video, audio { max-width: 100%; display: block }
 .note.none { font-size: 13px; color: var(--ink-2); padding: 10px 12px; background: var(--line-2); border-radius: 4px }
 .decide { display: flex; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap }
 .decide .sp { flex: 1 }
-.cands { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)) }
+.cands { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start }
+.choices { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 16px }
+.sheet { background: var(--silk); border: 1px solid var(--line); border-radius: 4px; padding: 22px 26px }
+.sheet .reading { max-height: none; overflow: visible; background: none; border: 0; padding: 0 }
+.spec { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 18px; margin: 0; max-width: 46em; font: 16px/1.75 var(--read) }
+.spec dt { color: var(--ink-2); font: 500 13px/1.7 var(--ui); padding-top: 5px }
+.spec dd { margin: 0 }
+.spec dd.full { grid-column: 1 / -1 }
+.reading p { margin: 0 0 .75em }
+.reading p:last-child { margin-bottom: 0 }
+.page.slim { padding: 0; border: 0; background: none }
+.diff { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font: 15px/1.7 var(--read); max-width: 46em }
+.diff .add { color: var(--malachite) }
+.diff .del { color: var(--ink-2); text-decoration: line-through }
+.batch { position: sticky; bottom: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 28px -32px -36px; padding: 12px 32px; background: rgba(248, 249, 248, .96); border-top: 1px solid var(--gold); backdrop-filter: blur(8px) }
+.batch .hint { flex-basis: 100% }
 .cand { display: flex; flex-direction: column; gap: 10px; min-width: 0 }
 .cand-bar { display: flex; align-items: center; gap: 10px }
 .cand-bar .sp { flex: 1 }
@@ -178,7 +197,7 @@ video, audio { max-width: 100%; display: block }
 .reading > div { max-width: 40em }
 .clip { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 16px; align-items: start }
 .clip.solo { grid-template-columns: minmax(0, 1fr) }
-.clip > .well { position: sticky; top: 150px }
+.clip > .well { position: sticky; top: 12px }
 .tl { background: var(--silk); border: 1px solid var(--line); border-radius: 4px; max-height: 70vh; overflow: auto; overscroll-behavior: contain }
 .tl .cut { position: sticky; top: 0; z-index: 1; background: var(--rail); padding: 8px 12px; border-bottom: 1px solid var(--line) }
 .cut-h { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap }
@@ -251,7 +270,7 @@ table.checks td:first-child { color: var(--ink-2); width: 120px }
 .page .beat { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px dashed var(--line) }
 .page .h + .beat, .page .set + .beat { border-top: 0 }
 .page .beat .id { font: 12px/1.5 var(--ui); color: var(--ink-2); padding-top: 7px; font-variant-numeric: tabular-nums }
-.aside { position: sticky; top: 150px; max-height: calc(100vh - 170px); overflow: auto; overscroll-behavior: contain; border-left: 1px solid var(--line); padding: 2px 0 2px 22px; font-size: 13px }
+.aside { position: sticky; top: 12px; max-height: calc(100vh - 140px); overflow: auto; overscroll-behavior: contain; border-left: 1px solid var(--line); padding: 2px 0 2px 22px; font-size: 13px }
 .aside h2 { margin: 0 0 10px; font: 600 14px/1.4 var(--ui) }
 .people { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px }
 .people b { font-weight: 600; margin-right: 6px }
@@ -319,6 +338,36 @@ table.checks td:first-child { color: var(--ink-2); width: 120px }
 .chip.running, .chip.queued { background: var(--azurite-soft); color: var(--azurite) }
 .chip.failed { background: var(--bad-soft); color: var(--bad) }
 .fail { display: flex; flex-direction: column; gap: 8px; max-width: 980px }
+.stages { display: grid; gap: 4px }
+.phase-block > h2 { margin: 22px 0 8px; font: 600 16px/1.4 var(--ui); display: flex; align-items: baseline; gap: 12px; color: var(--azurite) }
+.phase-block > h2 .meta { margin-left: auto; font-weight: 500; color: var(--ink-2); font-size: 12px }
+.rows { list-style: none; margin: 0; padding: 0 }
+.rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 7px 0; border-top: 1px solid var(--line-2); font-size: 13px }
+.rows li .nm { flex: 1; min-width: 8em }
+.rows li .st { color: var(--ink-2); font-variant-numeric: tabular-nums }
+.rows li.failed .st { color: var(--bad); font-weight: 600 }
+.rows li.review .st, .rows li.permit .st { color: var(--gold-ink); font-weight: 600 }
+.rows li.running .st, .rows li.queued .st { color: var(--azurite); font-weight: 600 }
+.rows li .err { flex-basis: 100%; color: var(--bad); font-size: 12px }
+.permit-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px; background: var(--gold-soft); border-left: 3px solid var(--gold); margin: 0 0 8px; color: var(--gold-ink) }
+.permit-bar b { font-size: 18px; font-variant-numeric: tabular-nums; line-height: 1 }
+.gpu-line { margin: 0 0 14px }
+
+/* ---------- talk ---------- */
+.talk { min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--silk); border-left: 1px solid var(--line) }
+.talk[hidden] { display: none }
+.talk-h { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line) }
+.talk-h h2 { margin: 0; font: 600 15px/1.4 var(--ui) }
+.talk-h .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.talk-log { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px }
+.talk-log .empty-talk { margin: 0 }
+.bubble { max-width: 100%; padding: 8px 12px; overflow-wrap: anywhere; white-space: pre-wrap }
+.bubble.user { align-self: flex-end; background: var(--azurite-soft); border-radius: 8px 8px 2px 8px }
+.bubble.assistant { align-self: stretch; background: var(--moon); border: 1px solid var(--line); border-radius: 8px 8px 8px 2px }
+.bubble .row { display: flex; gap: 8px; margin-top: 10px }
+.talk-form { flex: none; display: flex; gap: 8px; align-items: flex-end; padding: 12px; border-top: 1px solid var(--line); background: var(--silk) }
+.talk-form textarea { min-height: 72px; flex: 1 }
+.talk-form button { flex: none }
 
 /* ---------- overlays ---------- */
 .dock { position: fixed; right: calc(24px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 6; width: 360px; max-width: calc(100vw - 32px); display: none; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--silk); border: 1px solid var(--gold); border-top-width: 4px; border-radius: 8px; box-shadow: 0 12px 32px rgba(30, 38, 41, .18) }
@@ -356,6 +405,8 @@ table.checks td:first-child { color: var(--ink-2); width: 120px }
 /* ---------- narrow ---------- */
 @media (max-width: 1280px) { .top { grid-template-columns: minmax(0, 1fr) } }
 @media (max-width: 1180px) {
+  .workspace.with-talk { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(220px, 36vh) }
+  .talk { border-left: 0; border-top: 1px solid var(--line) }
   .split, .desk.wide, .clip, .screenplay, .seg > .body { grid-template-columns: minmax(0, 1fr) }
   .desk.wide .info:empty + .act { max-width: none }
   .clip > .well, .aside { position: static; max-height: none }
@@ -365,17 +416,23 @@ table.checks td:first-child { color: var(--ink-2); width: 120px }
   .page { padding: 26px 24px }
 }
 @media (max-width: 820px) {
-  .app { grid-template-columns: minmax(0, 1fr) }
+  html, body { overflow: auto; height: auto }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr) }
   .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 12px 12px 10px; gap: 10px }
+  .mainwrap { height: auto }
+  .workspace, .workspace.with-talk { display: flex; flex-direction: column; height: auto }
+  main { overflow: visible; height: auto }
+  .talk { height: 70vh; border-left: 0; border-top: 1px solid var(--line) }
+  .batch { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px }
   .engine { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) }
   .engine select { grid-column: 1 / -1 }
   .ledger { grid-column: 1 / -1 }
   .nav { display: flex; flex-wrap: wrap; gap: 4px }
   .nav .grp { display: none }
   .nav .item { padding: 6px 10px; background: rgba(255, 255, 255, .5) }
-  .top { position: static; padding: 12px 16px }
+  .top { padding: 12px 16px }
   .phases { grid-template-columns: repeat(2, minmax(0, 1fr)) }
-  main { padding: 18px 16px 220px }
+  main { padding: 18px 16px 32px }
   html { scroll-padding-top: 16px }
   .page { padding: 20px 16px }
   .story-row { grid-template-columns: minmax(0, 1fr) auto }
@@ -404,7 +461,18 @@ table.checks td:first-child { color: var(--ink-2); width: 120px }
   </aside>
   <div class="mainwrap">
     <header class="top"><div><h1 id="title">言象</h1><div class="sub" id="subtitle"></div></div><div class="phases" id="phases" role="group" aria-label="四个阶段的进度"></div></header>
-    <main id="view" tabindex="-1"><div class="skeleton"></div></main>
+    <div class="workspace" id="workspace">
+      <main id="view" tabindex="-1"><div class="skeleton"></div></main>
+      <aside class="talk" id="talk" hidden aria-label="对话">
+        <header class="talk-h"><h2>对话</h2><span class="hint" id="talkwhere"></span></header>
+        <div class="talk-log" id="talklog" aria-live="polite"></div>
+        <form class="talk-form" id="talkform">
+          <label class="vh" for="say">对当前产物说意见</label>
+          <textarea id="say" name="say" rows="2" placeholder="哪里不对、要怎么改，例如：衣服太素了…" autocomplete="off"></textarea>
+          <button type="submit" class="btn primary">发送</button>
+        </form>
+      </aside>
+    </div>
   </div>
 </div>
 <aside class="dock" id="dock" aria-label="等你授权"></aside>
@@ -444,6 +512,7 @@ let S = null, L = null, PROJ = null, STORIES = [], ST = null, SID = null
 let tab = null
 let lastKey = '', lastTab = null
 let dockFold = localStorage.getItem('yx.dock') === 'fold'
+let TALK = [], talkProject = '', talkKey = '', talkReview = null
 
 // ---------- helpers ----------
 const money = d => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: 2, maximumFractionDigits: d })
@@ -599,7 +668,6 @@ document.addEventListener('timeupdate', e => {
 }, true)
 
 // ---------- reviews ----------
-const reviseHint = a => a.kind === 'entity_image' || a.kind === 'keyframe' ? '会先改描述给你审，通过后再重出图（要再授权）' : a.kind === 'clip_draft' ? '会先改这一段的时间轴给你审，通过后关键帧和草稿再重出' : '会带着这条意见重写'
 function reviseBox(id, onsubmit, hint, label = '按意见重写') {
   return '<div class="revise" id="rv' + id + '"><label class="vh" for="rt' + id + '">修改意见</label><textarea id="rt' + id + '" name="revise-' + id + '" data-keep="rt' + esc(S.project) + '/' + id + '" autocomplete="off" aria-describedby="rvh' + id + '" placeholder="哪里不对、要怎么改…"></textarea>' +
     '<div class="note-bar"><span class="hint" id="rvh' + id + '">' + esc(hint) + '</span><button type="button" class="btn sm quiet" onclick="toggleRv(' + id + ')">收起</button><button type="button" class="btn sm primary" onclick="' + onsubmit + '">' + icon('edit') + label + '</button></div></div>'
@@ -608,12 +676,6 @@ function toggleRv(id) {
   const el = document.getElementById('rv' + id), open = el.classList.toggle('open')
   document.querySelectorAll('[aria-controls="rv' + id + '"]').forEach(b => b.setAttribute('aria-expanded', open))
   if (open) document.getElementById('rt' + id).focus()
-}
-async function sendCardRevise(review, artifact) {
-  const el = document.getElementById('rc' + review)
-  const v = needText(el, '先在意见框里写哪里要改'); if (!v) return
-  if (await api('/api/reviews/' + review + '/decision', { action: 'revise', artifact, instruction: v }, '已按意见排队重写')) clearDraft(el)
-  await refresh()
 }
 async function sendEdit(review, artifact) {
   const el = document.getElementById('rt' + artifact)
@@ -638,8 +700,8 @@ function mediaOf(a, r, eager) {
   if (a.media && a.mime === 'video/mp4') return '<div class="clip' + (a.timeline ? '' : ' solo') + '"><div class="well"><video id="v' + a.id + '" controls preload="metadata" src="' + media(a.media) + '"></video></div>' + (a.timeline ? tlTable(a.timeline, a.id, true) : '') + '</div>'
   if (a.media && a.mime && a.mime.startsWith('audio/')) return '<audio controls src="' + media(a.media) + '"></audio>'
   if (a.kind === 'timeline') return tlTable(p, a.id, false)
-  if (a.reading) return (a.still ? '<div class="well">' + zimg(a.still, scopeName(r.scope) + ' 的主图', 'wide', eager) + '</div>' : '') + '<div class="reading"><div>' + esc(a.reading) + '</div></div>'
-  if (p.text && !a.media) return '<div class="reading"><div>' + esc(p.text) + '</div></div>'
+  if (a.reading) return (a.still ? '<div class="well">' + zimg(a.still, scopeName(r.scope) + ' 的主图', 'wide', eager) + '</div>' : '') + '<div class="sheet">' + prose(a.reading) + '</div>'
+  if (p.text && !a.media) return '<div class="sheet">' + prose(p.text) + '</div>'
   return ''
 }
 function infoOf(a) {
@@ -651,47 +713,83 @@ function infoOf(a) {
   if (p.adjusted && p.adjusted.length) h += '<div class="notice">' + icon('alert') + '<span>这些段的裁剪超出允许范围，被程序收紧过：' + esc(p.adjusted.join('、')) + '</span></div>'
   if (p.checks) h += '<table class="checks"><tbody>' + p.checks.map(c => '<tr><td>' + esc(c.check) + '</td><td>' + (c.ok ? '<span class="tag green">通过</span> ' : '<span class="tag red">不通过</span> ') + esc(c.detail) + '</td></tr>').join('') + '</tbody></table><div class="hint">交付文件夹：<span translate="no">' + esc(p.folder) + '</span></div>'
   let drawers = ''
-  for (const c of a.context) drawers += drawer(c.title, '<pre>' + esc(c.body) + '</pre>', 'c' + a.id + c.title, '', c.title === '你的意见' || c.title === '和上一版比')
+  for (const c of a.context) drawers += drawer(c.title, contextHtml(c), 'c' + a.id + c.title, '', c.title === '你的意见' || c.title === '和上一版比')
   if (p.prompt) drawers += drawer('提示词', '<pre>' + esc(p.prompt) + '</pre>', 'p' + a.id)
   return h + (drawers ? '<div class="drawers">' + drawers + '</div>' : '')
 }
 async function redo(r) { if (await ask('重出一次？', '同样的输入换一个种子再出一次，要再授权才会真的出。', '重出', 'spend')) decide(r, { action: 'redo' }, '已排队重出') }
+function prose(text) {
+  const raw = String(text ?? '')
+  const lines = raw.split('\n').map(s => s.trim()).filter(Boolean)
+  if (!lines.length) return ''
+  const labeled = lines.filter(l => /^[^：\n]{1,16}：/.test(l))
+  if (labeled.length >= 2 && labeled.length >= lines.length * 0.6) {
+    return '<dl class="spec">' + lines.map(l => {
+      const i = l.indexOf('：')
+      if (i < 1 || i > 16) return '<dd class="full">' + esc(l) + '</dd>'
+      return '<dt>' + esc(l.slice(0, i)) + '</dt><dd>' + esc(l.slice(i + 1)) + '</dd>'
+    }).join('') + '</dl>'
+  }
+  if (lines.some(l => /^场\d+/.test(l) || l.startsWith('△') || /^\[变化\]/.test(l))) return '<div class="page slim">' + formatScreenplay(raw) + '</div>'
+  return '<div class="reading"><div>' + lines.map(l => '<p>' + esc(l) + '</p>').join('') + '</div></div>'
+}
+function diffList(body) {
+  const lines = String(body).split('\n').filter(l => l.trim())
+  if (!lines.length) return '<p class="hint">一字未改</p>'
+  return '<ul class="diff">' + lines.map(line => '<li class="' + (line.startsWith('新加：') ? 'add' : line.startsWith('删掉：') ? 'del' : '') + '">' + esc(line) + '</li>').join('') + '</ul>'
+}
+function contextHtml(c) {
+  if (c.title === '和上一版比') return diffList(c.body)
+  if (c.title.includes('提示词')) return '<pre>' + esc(c.body) + '</pre>'
+  return prose(c.body)
+}
+function focusTalk(review) {
+  talkReview = review
+  const h = document.getElementById('rvh-' + review)
+  const name = h ? h.textContent.replace(/\s+/g, ' ').trim() : ''
+  const box = document.getElementById('say')
+  box.placeholder = (name ? name + '，' : '') + '哪里不对、要怎么改…'
+  box.focus()
+}
 function reviewCard(r, first) {
   const many = r.artifacts.length > 1
   const a0 = r.artifacts[0]
   const video = r.artifacts.some(a => a.mime === 'video/mp4')
   const paid = r.artifacts.some(a => a.media)
   const pickOne = r.point === 5 || r.point === 7
-  // Candidates of one review come from the same text, so one note per review goes to it.
-  const target = r.artifacts.find(a => a.revisable)
-  const editable = many && r.artifacts.some(a => a.editable)
-  const note = target
-    ? '<div class="note"><label for="rc' + r.id + '">' + (editable ? '评审意见（几张都不对时用）' : '评审意见') + '</label><textarea id="rc' + r.id + '" name="note-' + r.id + '" data-keep="rc' + esc(S.project) + '/' + r.id + '" autocomplete="off" aria-describedby="rh' + r.id + '" placeholder="哪里不对、要怎么改，例如：石台再旧一些，锁链上要有锈迹…"></textarea>' +
-      '<div class="note-bar"><span class="hint" id="rh' + r.id + '">' + esc(reviseHint(target)) + (editable ? '。只想改某一张，点那张下面的「照这张改」' : '') + '</span><button type="button" class="btn primary" onclick="sendCardRevise(' + r.id + ',' + target.id + ')">' + icon('edit') + '按意见重写</button></div></div>'
-    : '<div class="note none">这一步没有可改的文字。不满意就点「重出」，换一个种子再出一次。</div>'
-  let decideBar = paid ? '<button type="button" class="btn" onclick="redo(' + r.id + ')">' + icon('redo') + '重出</button>' : ''
-  decideBar += '<span class="sp"></span>'
-  if (many) decideBar += '<span class="hint">在上面的候选里点「选这张」</span>'
-  else decideBar += '<button type="button" class="btn pass big" onclick="decide(' + r.id + ',{action:\'' + (pickOne ? 'pick' : 'approve') + '\',artifact:' + a0.id + '},\'已通过\')">' + icon('check') + (r.point === 7 ? '采用' : '通过') + '</button>'
-  const desk = (wide, info) => '<div class="desk' + (wide ? ' wide' : '') + '"><div class="info">' + info + '</div><div class="act">' + note + '<div class="decide">' + decideBar + '</div></div></div>'
   const head = '<header class="rv-head"><span class="tag gold kind">' + esc(kindLabel(a0.kind, r.scope)) + '</span><h2 id="rvh-' + r.id + '">' + scopeHtml(r.scope) + '</h2>' +
     '<span class="meta">' + (many ? r.artifacts.length + ' 个候选，选一个' : '第 ' + a0.version + ' 版') + '</span><span class="sp"></span>' +
-    '<span class="meta" translate="no">' + esc(r.scope) + '</span><span class="meta">审核 ' + r.id + '</span></header>'
+    '<span class="meta" translate="no">' + esc(r.scope) + '</span></header>'
+  let choices = ''
+  if (!many) choices += '<button type="button" class="btn pass big" onclick="decide(' + r.id + ',{action:\'' + (pickOne ? 'pick' : 'approve') + '\',artifact:' + a0.id + '},\'已通过\')">' + icon('check') + (r.point === 7 ? '采用' : '通过') + '</button>'
+  choices += '<button type="button" class="btn big" onclick="focusTalk(' + r.id + ')">' + icon('edit') + (many ? '都不行，说哪里不对' : '说哪里不对') + '</button>'
+  if (paid) choices += '<button type="button" class="btn big" onclick="redo(' + r.id + ')">' + icon('redo') + '重出</button>'
+  const bar = '<div class="choices">' + choices + '</div>'
   let body
   if (many) {
-    body = '<div class="cands">' + r.artifacts.map((a, i) => '<div class="cand">' + mediaOf(a, r, first) +
+    body = '<div class="cands">' + r.artifacts.map((a, i) => '<div class="cand">' + mediaOf(a, r, first && i < 2) +
       '<div class="cand-bar"><b>候选 ' + (i + 1) + '</b><span class="meta">第 ' + a.version + ' 版</span><span class="sp"></span>' + (a.editable ? '<button type="button" class="btn" onclick="toggleRv(' + a.id + ')" aria-expanded="false" aria-controls="rv' + a.id + '">' + icon('edit') + '照这张改</button>' : '') +
-      '<button type="button" class="btn pass" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button></div>' +
+      '<button type="button" class="btn pass big" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button></div>' +
       (a.editable ? reviseBox(a.id, 'sendEdit(' + r.id + ',' + a.id + ')', '以这张为底，只改你写的地方，出 2 张新的（要授权 2 张）；这张也留着对比', '照这张改') : '') +
-      editedOf(a, r) + infoOf(a) + '</div>').join('') + '</div>' + desk(true, '')
-  } else if (video) body = '<div class="stage">' + mediaOf(a0, r, first) + '</div>' + desk(true, infoOf(a0))
-  else body = '<div class="split"><div class="stage">' + mediaOf(a0, r, first) + '</div>' + desk(false, infoOf(a0)) + '</div>'
+      editedOf(a, r) + infoOf(a) + '</div>').join('') + '</div>' + bar
+  } else if (video) body = '<div class="stage wide">' + mediaOf(a0, r, first) + '</div>' + infoOf(a0) + bar
+  else body = '<div class="stage">' + mediaOf(a0, r, first) + '</div>' + infoOf(a0) + bar
   return '<section class="rv" aria-labelledby="rvh-' + r.id + '">' + head + body + '</section>'
+}
+function batchBar() {
+  const img = batch('image'), vidb = batch('video')
+  if (!img.n && !vidb.n) return ''
+  let h = '<div class="batch">'
+  if (img.n) h += '<span>待开始：' + img.n + ' 张图</span><button type="button" class="btn spend big" onclick="grant(\'image\')">' + icon('image') + '开始出图</button>'
+  if (vidb.n) h += '<span>待开始：' + vidb.n + ' 段</span><button type="button" class="btn spend big" onclick="grant(\'video\')">' + icon('video') + '开始出片</button>'
+  const hints = [img.n ? img.brief + '，约 ' + usd(img.n * S.imageUsd) : '', vidb.n ? vidb.brief + (S.gpu ? '' : '。GPU 离线，授权后等开机才跑') : ''].filter(Boolean)
+  h += '<span class="hint">' + esc(hints.join('。')) + '</span>'
+  return h + '</div>'
 }
 function reviewsPage(point) {
   const list = S.reviews.filter(r => r.point === point)
   if (!list.length) return emptyState('inbox', '这一项都审完了', '新的待审会出现在左边「待审」里。', '<a class="btn" href="#progress">看进度</a>')
-  return list.map((r, i) => reviewCard(r, i === 0)).join('')
+  return list.map((r, i) => reviewCard(r, i === 0)).join('') + batchBar()
 }
 
 // ---------- library ----------
@@ -909,24 +1007,63 @@ function storyPage() {
 // ---------- progress ----------
 const LABEL = { done: '完成', review: '待审', running: '在跑', queued: '排队', failed: '失败', waiting: '等前置' }
 async function resubmit(id) { if (await ask('重提这个视频任务？', '它可能没提交成功。重提会再占一次 GPU。', '重提', 'spend')) act('/api/jobs/' + id + '/resolve', {}, '已重提') }
+function rowState(n, i) {
+  const permit = S.pending.find(p => !p.gpu && p.node === n.node && p.scope === i.scope)
+  if (permit) return { cls: 'permit', text: '等授权 ' + permit.count + (permit.pool === 'image' ? ' 张' : ' 段') }
+  if (S.pending.some(p => p.gpu && p.node === n.node && p.scope === i.scope)) return { cls: 'permit', text: '等 GPU' }
+  return { cls: i.status, text: LABEL[i.status] || i.status }
+}
+function nodeBlock(n) {
+  const count = k => n.items.filter(i => i.status === k).length
+  const head = '<h2>' + esc(n.title) + '<span class="meta">' + count('done') + ' / ' + n.items.length + '</span></h2>'
+  if (n.items.every(i => i.status === 'done')) return '<section class="node">' + head + '<span class="chip done">全部完成</span></section>'
+  const open = n.items.filter(i => i.status !== 'done')
+  const done = n.items.length - open.length
+  const rows = open.map(i => {
+    const st = rowState(n, i)
+    const retry = i.status === 'failed' && i.run ? '<button type="button" class="btn sm" onclick="act(\'/api/node-runs/' + i.run + '/retry\',{},\'已重试\')">重试</button>' : ''
+    const err = i.status === 'failed' && i.error ? '<span class="err">' + esc(i.error) + '</span>' : ''
+    return '<li class="' + st.cls + '"><span class="nm">' + esc(scopeName(i.scope)) + '</span><span class="st">' + esc(st.text) + '</span>' + retry + err + '</li>'
+  }).join('')
+  const rest = done ? '<li class="done"><span class="nm">其余 ' + done + ' 项</span><span class="st">完成</span></li>' : ''
+  return '<section class="node">' + head + '<ul class="rows">' + rows + rest + '</ul></section>'
+}
+function permitBar() {
+  const img = batch('image'), vidb = batch('video'), gpuWait = S.pending.filter(p => p.gpu)
+  if (!img.n && !vidb.n && !gpuWait.length) return ''
+  let h = '<div class="permit-bar">'
+  if (img.n) h += '<span>等授权出图 <b>' + img.n + '</b> 张</span><span class="hint">' + esc(img.brief) + '</span><button type="button" class="btn spend" onclick="grant(\'image\')">' + icon('image') + '开始出图 ' + img.n + ' 张</button>'
+  if (vidb.n) h += '<span>等授权出片 <b>' + vidb.n + '</b> 段</span><span class="hint">' + esc(vidb.brief) + '</span><button type="button" class="btn spend" onclick="grant(\'video\')">' + icon('video') + '开始出片 ' + vidb.n + ' 段</button>'
+  if (gpuWait.length) h += '<span>已授权、等 GPU <b>' + gpuWait.length + '</b> 项</span>'
+  return h + '</div>'
+}
 function progressPage() {
   const all = S.progress.flatMap(n => n.items), c = k => all.filter(i => i.status === k).length
-  let h = '<div class="pstat">' + [['在跑', c('running'), 'blue'], ['排队', c('queued'), 'blue'], ['待审', c('review'), 'gold'], ['失败', c('failed') + S.unknown.length, 'red'], ['完成', c('done') + ' / ' + all.length, '']].map(([k, v, t]) => '<div class="' + (v ? t : '') + '"><b>' + v + '</b>' + k + '</div>').join('') + '</div>'
-  // Everything that failed goes on top with its fix, so nothing has to be hunted for in the grid below.
-  const fails = S.progress.flatMap(n => n.items.filter(i => i.status === 'failed').map(i => '<div class="notice bad">' + icon('alert') + '<span><b>' + esc(n.title + ' ' + scopeName(i.scope)) + '</b>：' + esc(i.error) + '</span>' + (i.run ? '<button type="button" class="btn sm" onclick="act(\'/api/node-runs/' + i.run + '/retry\',{},\'已重试\')">重试</button>' : '') + '</div>'))
+  const img = batch('image'), vidb = batch('video')
+  const waiting = [img.n ? img.n + ' 张' : '', vidb.n ? vidb.n + ' 段' : ''].filter(Boolean).join('、') || '0'
+  let h = '<div class="pstat">' + [['在跑', c('running'), 'blue'], ['排队', c('queued'), 'blue'], ['待审', c('review'), 'gold'], ['等授权', waiting, waiting === '0' ? '' : 'gold'], ['失败', c('failed') + S.unknown.length, 'red'], ['完成', c('done') + ' / ' + all.length, '']].map(([k, v, t]) => '<div class="' + (v && v !== '0' ? t : '') + '"><b>' + v + '</b>' + k + '</div>').join('') + '</div>'
+  h += '<p class="hint gpu-line">' + (S.gpu ? 'GPU 在线' : 'GPU 离线') + '</p>'
+  h += permitBar()
   const lost = S.unknown.map(j => '<div class="notice bad">' + icon('alert') + '<span><b>视频任务 ' + j.id + '</b> 可能没提交成功：' + esc(j.error) + '</span><button type="button" class="btn sm" onclick="resubmit(' + j.id + ')">重提</button></div>')
-  if (fails.length || lost.length) h += '<h2 class="sec">要处理</h2><div class="fail">' + lost.concat(fails).join('') + '</div><h2 class="sec">每一步</h2>'
-  h += '<div class="nodes">' + S.progress.map(n => {
-    const count = k => n.items.filter(i => i.status === k).length
-    const head = '<h2>' + esc(n.title) + '<span class="meta">' + count('done') + ' / ' + n.items.length + '</span></h2>'
-    if (n.items.every(i => i.status === 'done')) return '<section class="node">' + head + '<span class="chip done">全部完成</span></section>'
-    return '<section class="node">' + head + '<div class="chips">' + n.items.map(i => '<span class="chip ' + i.status + '" title="' + esc(i.scope) + '">' + esc(scopeName(i.scope)) + '<em>' + LABEL[i.status] + '</em></span>').join('') + '</div></section>'
-  }).join('') + '</div>'
-  return h
+  if (lost.length) h += '<h2 class="sec">要处理</h2><div class="fail">' + lost.join('') + '</div>'
+  const placed = new Set()
+  h += '<div class="stages">' + PHASES.map(([name, nodes]) => {
+    const ns = S.progress.filter(n => nodes.includes(n.node))
+    ns.forEach(n => placed.add(n.node))
+    if (!ns.length) return ''
+    const items = ns.flatMap(n => n.items)
+    const imgN = S.pending.filter(p => !p.gpu && p.pool === 'image' && nodes.includes(p.node)).reduce((s, p) => s + p.count, 0)
+    const vidN = S.pending.filter(p => !p.gpu && p.pool === 'video' && nodes.includes(p.node)).reduce((s, p) => s + p.count, 0)
+    const extra = [imgN ? '等授权 ' + imgN + ' 张' : '', vidN ? '等授权 ' + vidN + ' 段' : ''].filter(Boolean).join('，')
+    return '<section class="phase-block"><h2>' + name + '<span class="meta">' + items.filter(i => i.status === 'done').length + ' / ' + items.length + (extra ? ' · ' + extra : '') + '</span></h2>' + ns.map(nodeBlock).join('') + '</section>'
+  }).join('')
+  const rest = S.progress.filter(n => !placed.has(n.node))
+  if (rest.length) h += '<section class="phase-block"><h2>其他</h2>' + rest.map(nodeBlock).join('') + '</section>'
+  return h + '</div>'
 }
 
 // ---------- chrome ----------
-const PHASES = [['设计', ['brief', 'desc', 'image', 'derive']], ['分镜', ['plan', 'timeline', 'views', 'view', 'kfdesc', 'keyframe']], ['声音与草稿', ['audition', 'voice', 'draft', 'trim', 'cut_draft']], ['成片', ['refine', 'cut_final']]]
+const PHASES = [['设计', ['brief', 'desc', 'image', 'derive']], ['分镜', ['plan', 'blocking', 'timeline', 'views', 'view', 'kfdesc', 'keyframe']], ['声音与草稿', ['audition', 'voice', 'draft', 'trim', 'cut_draft']], ['成片', ['refine', 'cut_final']]]
 function phases() {
   return PHASES.map(([name, nodes]) => {
     const ns = S.progress.filter(n => nodes.includes(n.node))
@@ -982,7 +1119,11 @@ function dock() {
   if (gpuWait.length) h += '<div class="notice">' + icon('alert') + '<span>已授权、等 GPU 开机：' + esc(gpuWait.map(p => (NODE[p.node] || p.node) + ' ' + scopeName(p.scope)).join('、')) + '</span></div>'
   return h
 }
-function paintDock() { const d = dock(); $('#dock').innerHTML = d; $('#dock').classList.toggle('show', !!d); $('#dock').classList.toggle('fold', dockFold) }
+function paintDock() {
+  if (typeof tab === 'number') { $('#dock').innerHTML = ''; $('#dock').classList.remove('show'); document.body.classList.remove('has-dock'); return }
+  const d = dock(); $('#dock').innerHTML = d; $('#dock').classList.toggle('show', !!d); $('#dock').classList.toggle('fold', dockFold)
+  document.body.classList.toggle('has-dock', !!d)
+}
 function emptyState(ic, title, sub, action) { return '<div class="empty">' + icon(ic) + '<b>' + esc(title) + '</b><p>' + esc(sub) + '</p>' + (action || '') + '</div>' }
 
 function titles() {
@@ -991,7 +1132,7 @@ function titles() {
   if (LIB[tab]) return [LIB[tab][0], '现在用的版本；标「待审」「等重做」的还没定下来']
   const n = S.reviews.filter(x => x.point === tab).length
   const r = S.reviews.find(x => x.point === tab)
-  return ['★' + tab + ' ' + (r ? r.title : ''), n + ' 项待审，逐张看完写意见或通过']
+  return ['★' + tab + ' ' + (r ? r.title : ''), n + ' 项待审。左边看，右边说哪里要改']
 }
 // Keep what the creator is in the middle of across a re-render: drawers, note boxes, focus, caret, scroll.
 const FOCUSABLE = 'a[href], button, textarea, select, summary, video, audio'
@@ -1003,7 +1144,7 @@ function snapshot() {
     rv: [...document.querySelectorAll('.revise.open')].map(d => d.id),
     focus: focusSig(a), sel: a && a.tagName === 'TEXTAREA' ? [a.selectionStart, a.selectionEnd] : null,
     tl: Object.fromEntries([...document.querySelectorAll('.tl[id]')].map(t => [t.id, t.scrollTop])),
-    y: window.scrollY,
+    y: scroller().scrollTop,
     // The live text follows the writing unless the creator has scrolled up in it to read.
     live: (b => !b ? null : b.scrollHeight - b.scrollTop - b.clientHeight < 40 ? 'end' : b.scrollTop)(document.getElementById('livebody')),
   }
@@ -1019,7 +1160,12 @@ function restore(s) {
   }
   const b = document.getElementById('livebody')
   if (b) b.scrollTop = s.live === null || s.live === 'end' ? b.scrollHeight : s.live
-  window.scrollTo(0, s.y)
+  scroller().scrollTop = s.y
+}
+function scroller() {
+  const v = document.getElementById('view')
+  const y = getComputedStyle(v).overflowY
+  return y === 'auto' || y === 'scroll' ? v : document.scrollingElement
 }
 
 // ---------- routing ----------
@@ -1037,7 +1183,7 @@ function applyHash() {
   tab = r.tab; localStorage.setItem('yx.tab', hashOf())
   if (tab === 'story') { if (r.sid !== SID) { SID = r.sid; ST = null } loadStories() }
   if (LIB[tab]) { L = null; loadLib() }
-  lastKey = ''; render(); window.scrollTo(0, 0)
+  lastKey = ''; render(); scroller().scrollTop = 0
 }
 window.addEventListener('hashchange', applyHash)
 const go = t => { if (location.hash === '#' + t) applyHash(); else location.hash = '#' + t }
@@ -1054,8 +1200,10 @@ function render() {
   // Never pull a playing clip out from under the creator; the new data shows once it is paused.
   const playing = [...document.querySelectorAll('video, audio')].some(v => !v.paused)
   if (playing && tab === lastTab) return
+  const switched = tab !== lastTab
   lastKey = key
   lastTab = tab
+  if (switched) talkReview = null
   const snap = snapshot()
   $('#gpudot').className = 'dot ' + (S.gpu ? 'on' : 'off')
   $('#gputext').textContent = S.gpu ? 'GPU 在线' : 'GPU 离线'
@@ -1066,8 +1214,85 @@ function render() {
   $('#nav').innerHTML = nav()
   const [t, sub] = titles(); $('#title').textContent = t; $('#subtitle').textContent = sub
   $('#view').innerHTML = tab === 'story' ? storyPage() : tab === 'progress' ? progressPage() : LIB[tab] ? libPage() : reviewsPage(tab)
+  paintTalk()
   paintDock()
   restore(snap)
+}
+
+// ---------- talk ----------
+function timePoint(text) {
+  const m = /第\s*(\d+(?:\.\d+)?)\s*秒/.exec(text)
+  if (m) return Number(m[1])
+  const v = document.querySelector('#view video')
+  if (v && /这里|这一秒|这会儿|现在/.test(text) && Number.isFinite(v.currentTime)) return Math.round(v.currentTime * 10) / 10
+  return undefined
+}
+function paintTalk() {
+  const show = typeof tab === 'number'
+  $('#workspace').classList.toggle('with-talk', show)
+  $('#talk').hidden = !show
+  if (S && S.project !== talkProject) {
+    TALK = []
+    talkProject = S.project
+    talkReview = null
+    const box = $('#say')
+    if (box) { box.value = ''; box.placeholder = '哪里不对、要怎么改，例如：衣服太素了…' }
+  }
+  const where = $('#talkwhere')
+  if (where) where.textContent = show ? $('#title').textContent : ''
+  const key = JSON.stringify(TALK)
+  if (key === talkKey) return
+  talkKey = key
+  const log = $('#talklog')
+  log.innerHTML = TALK.length ? TALK.map(m => {
+    if (m.who === 'user') return '<div class="bubble user">' + esc(m.text) + '</div>'
+    const go = m.proposal ? '<div class="row"><button type="button" class="btn primary sm" data-act="yes" data-id="' + esc(m.proposal) + '">确认</button><button type="button" class="btn sm" data-act="no" data-id="' + esc(m.proposal) + '">取消</button></div>' : ''
+    return '<div class="bubble assistant">' + esc(m.text) + go + '</div>'
+  }).join('') : '<p class="hint empty-talk">对着左边正在审的图或文字说意见。改之前会先问你对不对。</p>'
+  log.scrollTop = log.scrollHeight
+}
+async function sendTalk(text) {
+  const utterance = String(text || '').trim()
+  if (!utterance || typeof tab !== 'number') return
+  const at = timePoint(utterance)
+  TALK.forEach(m => { if (m.proposal) m.proposal = null })
+  TALK.push({ who: 'user', text: utterance })
+  talkKey = ''
+  paintTalk()
+  const body = { utterance, point: tab }
+  if (talkReview) body.review = talkReview
+  if (at !== undefined) body.at = at
+  const j = await api('/api/assistant', body)
+  if (!j) { TALK.pop(); talkKey = ''; paintTalk(); return }
+  const say = j.confirm || (j.action && (j.action.confirm || j.action.question || j.action.text)) || '…'
+  const msg = { who: 'assistant', text: say }
+  if (j.id) msg.proposal = String(j.id)
+  TALK.push(msg)
+  $('#say').value = ''
+  talkReview = null
+  $('#say').placeholder = '哪里不对、要怎么改，例如：衣服太素了…'
+  talkKey = ''
+  paintTalk()
+}
+async function confirmTalk(id) {
+  if (!await api('/api/assistant/confirm', { id: String(id) }, '已按确认执行')) return
+  for (const m of TALK) if (String(m.proposal) === String(id)) m.proposal = null
+  talkKey = ''
+  paintTalk()
+  await refresh()
+}
+async function dropTalk(id) {
+  if (!await api('/api/assistant/confirm', { id: String(id), cancel: true })) return
+  for (const m of TALK) if (String(m.proposal) === String(id)) m.proposal = null
+  talkKey = ''
+  paintTalk()
+}
+$('#talkform').onsubmit = e => { e.preventDefault(); sendTalk($('#say').value) }
+$('#talklog').onclick = e => {
+  const btn = e.target.closest('button')
+  if (!btn || !btn.dataset.id) return
+  if (btn.dataset.act === 'yes') confirmTalk(btn.dataset.id)
+  else dropTalk(btn.dataset.id)
 }
 
 // ---------- data ----------
