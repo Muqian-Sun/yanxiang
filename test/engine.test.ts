@@ -363,3 +363,44 @@ test('a note on a portrait rewrites its description, and the picture is drawn ag
   expect(e.revisable(turnaround.artifact_ids[0]!)).toBe(false)
   expect(() => e.revise(turnaround.artifact_ids[0]!, '换个角度', turnaround.id)).toThrow('只能「重出」')
 })
+
+test('a note on one candidate draws new ones from it, and it stays in the next review beside them', async () => {
+  const store = project()
+  const images = fakeImages()
+  const e = engine(store, fakeText(), images)
+  for (let i = 0; i < 3; i++) {
+    await round(e)
+    approveAll(e, store, 4)
+  }
+  store.grant('e1/char/谢无咎', 'image', 2)
+  await round(e)
+  const review = store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!
+  const [first, second] = review.artifact_ids as [number, number]
+  expect(e.editable(second)).toBe(true)
+  e.edit(review.id, second, '袍子换成深青色')
+  expect(store.artifact(first).status).toBe('superseded')
+  expect(store.artifact(second).status).toBe('draft')
+  const drawn = images.submits.length
+  const pending = await round(e)
+  expect(images.submits.length).toBe(drawn)
+  expect(pending.some(p => p.scope === 'e1/char/谢无咎' && p.count === 2)).toBe(true)
+  store.grant('e1/char/谢无咎', 'image', 2)
+  await round(e)
+  expect(images.submits.slice(drawn)).toHaveLength(2)
+  for (const [i, prompt] of images.submits.slice(drawn).entries()) {
+    expect(prompt).toContain('图 1 是要改的这张图。')
+    expect(prompt).toContain('照图 1 改：袍子换成深青色\n除了这处修改，脸、发型、服装、饰物、颜色、身形和构图都和图 1 一致，不重新设计。')
+    expect(images.refs[drawn + i]).toEqual([store.mediaPath(store.artifact(second).media_id!)])
+  }
+  const next = store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!
+  expect(next.artifact_ids).toHaveLength(3)
+  expect(next.artifact_ids[0]).toBe(second)
+  expect(next.artifact_ids.slice(1).map(id => store.artifact(id).payload)).toEqual(next.artifact_ids.slice(1).map(id => expect.objectContaining({ edited_from: second, instruction: '袍子换成深青色' })))
+  e.pick(next.id, second)
+  expect(store.locked('entity_image', 'e1/char/谢无咎')!.id).toBe(second)
+  store.grant('e1/char/谢无咎/三视图', 'image', 1)
+  await round(e)
+  const turnaround = store.openReviews().find(r => r.scope === 'e1/char/谢无咎/三视图')!
+  expect(e.editable(turnaround.artifact_ids[0]!)).toBe(false)
+  expect(() => e.edit(turnaround.id, turnaround.artifact_ids[0]!, '换个角度')).toThrow('不能照着改')
+})

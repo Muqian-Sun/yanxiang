@@ -158,13 +158,16 @@ export function styleRefMedia(env: EntityEnv): number {
 }
 
 /** Draws `count` candidates of one picture and stores them as drafts. */
-export async function draw(env: EntityEnv, scope: string, run: NodeRun, inputs: number[], type: ImageType, body: string, refs: { label: string; media: number }[], count: number, kind = 'entity_image'): Promise<number[]> {
+export async function draw(env: EntityEnv, scope: string, run: NodeRun, inputs: number[], type: ImageType, body: string, refs: { label: string; media: number }[], count: number, kind = 'entity_image', extra: object = {}): Promise<number[]> {
   if (!env.images) throw new Error('没有配置出图服务')
   const prompt = imagePrompt(env.root, env.style, type, body, refs.map(r => r.label))
   const drawn = await Promise.all(Array.from({ length: count }, (_, k) =>
     image(env.store, env.images!, { type, prompt, params: imageParams(type), references: refs.map(r => r.media), node_run_id: run.id, candidate: k + 1 }, env.sleep)))
-  return env.store.tx(() => drawn.map(d => env.store.addArtifact({ kind, scope, payload: { job_id: d.job, prompt }, media_id: d.media, inputs, node_run_id: run.id, created_by: 'model' }).id))
+  return env.store.tx(() => drawn.map(d => env.store.addArtifact({ kind, scope, payload: { job_id: d.job, prompt, ...extra }, media_id: d.media, inputs, node_run_id: run.id, created_by: 'model' }).id))
 }
+
+/** What a note on one candidate leaves as it was, per kind; the wording follows the three-view's 「都和参考图一致，不重新设计」. */
+const KEEP: Record<Kind, string> = { char: '脸、发型、服装、饰物、颜色、身形和构图', loc: '陈设、布局、光线、颜色和构图', prop: '形制、材质、纹样、颜色和构图' }
 
 export const lockedImage = (store: Store, scope: string) => {
   const lock = store.locked('entity_lock', scope)
@@ -178,6 +181,7 @@ const picture: NodeDef = {
   review: 5,
   paid: { pool: 'image', count: CANDIDATES },
   reviseVia: (store, a) => store.locked('entity_desc', a.scope),
+  edits: true,
   scopes: brief.scopes,
   ready(store, scope): Ready {
     const d = store.locked('entity_desc', scope)
@@ -202,7 +206,12 @@ const picture: NodeDef = {
         return { label: `${parse(img.scope).name}的设定图`, media: img.media_id! }
       }),
     ]
-    return draw(e, scope, run, inputs, PICTURE[kind], body, refs, CANDIDATES)
+    if (!run.instruction) return draw(e, scope, run, inputs, PICTURE[kind], body, refs, CANDIDATES)
+    // The creator's note on one candidate (Engine.edit): drawn from that candidate, which goes into the review beside the new ones.
+    const from = e.store.artifact(run.previous_id!)
+    const edit = readFileSync(join(e.root, 'config/prompts/image-edit.md'), 'utf8').trim().replace('{{instruction}}', run.instruction).replace('{{keep}}', KEEP[kind])
+    const drawn = await draw(e, scope, run, inputs, PICTURE[kind], edit, [{ label: '要改的这张图', media: from.media_id! }, ...refs], CANDIDATES, 'entity_image', { edited_from: from.id, instruction: run.instruction })
+    return from.status === 'draft' ? [from.id, ...drawn] : drawn
   },
 }
 

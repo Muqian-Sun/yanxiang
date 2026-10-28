@@ -33,6 +33,11 @@ export interface NodeDef {
   reviseVia?: (store: Store, artifact: Artifact) => Artifact | undefined
   /** Paid generations one run makes (pictures or video segments); such a run needs that many units of permission. */
   paid?: { pool: 'image' | 'video'; count: number }
+  /**
+   * A picture node that can draw again from one of its own candidates and the creator's note on it:
+   * its run then has the note as `instruction` and that candidate as `previous_id`.
+   */
+  edits?: boolean
   scopes(store: Store): string[]
   ready(store: Store, scope: string): Ready
   /** Writes draft artifacts (with their inputs) and returns their ids. */
@@ -279,6 +284,30 @@ export class Engine {
       store.supersede(review.artifact_ids)
       this.closeRun(def, a.scope)
       queue()
+    })
+  }
+
+  /** Whether a note on this picture can be drawn from the picture itself (`edit`). */
+  editable(artifactId: number): boolean {
+    const a = this.env.store.artifact(artifactId)
+    const def = this.nodes.find(d => d.output === a.kind && d.scopes(this.env.store).includes(a.scope))
+    return Boolean(def?.edits && a.media_id)
+  }
+
+  /**
+   * ★5: the creator's note on one candidate. New candidates are drawn from that one with the note
+   * (needs permission again); it stays as a draft and goes into the next review beside them.
+   */
+  edit(reviewId: number, artifactId: number, instruction: string) {
+    const { store } = this.env
+    const review = store.review(reviewId)
+    if (!review.artifact_ids.includes(artifactId)) throw new Error(`产物 ${artifactId} 不在审核 ${reviewId} 里`)
+    if (!this.editable(artifactId)) throw new Error(`产物 ${artifactId} 不能照着改，只能改描述或「重出」`)
+    const def = this.nodeFor(store.artifact(artifactId).kind, review.scope)
+    store.decide(reviewId, { action: 'revise', artifact_id: artifactId, instruction }, () => {
+      store.supersede(review.artifact_ids.filter(id => id !== artifactId))
+      this.closeRun(def, review.scope)
+      store.addNodeRun(def.name, review.scope, { instruction, previous_id: artifactId })
     })
   }
 

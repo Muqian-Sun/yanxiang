@@ -71,7 +71,7 @@ function state(store: Store, engine: Engine, gpu: Gpu) {
       const a = store.artifact(id)
       const media = a.media_id ? (store.db.prepare('SELECT mime FROM media WHERE id = ?').get(a.media_id) as { mime: string }) : undefined
       const timeline = a.kind === 'clip_draft' ? store.locked('timeline', a.scope)?.payload : undefined
-      return { id: a.id, kind: a.kind, version: a.version, payload: a.payload, media: a.media_id, mime: media?.mime, context: context(store, a), timeline, revisable: engine.revisable(a.id) }
+      return { id: a.id, kind: a.kind, version: a.version, payload: a.payload, media: a.media_id, mime: media?.mime, context: context(store, a), timeline, revisable: engine.revisable(a.id), editable: engine.editable(a.id) }
     }),
   }))
   const unknown = store.jobs(['unknown']).map(j => ({ id: j.id, error: j.error }))
@@ -149,9 +149,10 @@ export function serve(app: App, port: number): string {
           if (body.action === 'approve') engine.approve(review)
           else if (body.action === 'pick') engine.pick(review, Number(body.artifact))
           else if (body.action === 'redo') engine.redo(review)
-          else if (body.action === 'revise') {
+          else if (body.action === 'revise' || body.action === 'edit') {
             if (!String(body.instruction ?? '').trim()) throw new Error('要写修改意见')
-            engine.revise(Number(body.artifact), String(body.instruction), review)
+            if (body.action === 'edit') engine.edit(review, Number(body.artifact), String(body.instruction))
+            else engine.revise(Number(body.artifact), String(body.instruction), review)
           } else throw new Error(`不认识的操作 ${body.action}`)
           return Response.json({ ok: true })
         }

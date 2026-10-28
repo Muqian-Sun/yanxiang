@@ -596,9 +596,9 @@ document.addEventListener('timeupdate', e => {
 
 // ---------- reviews ----------
 const reviseHint = a => a.kind === 'entity_image' || a.kind === 'keyframe' ? '会先改描述，再重出图（要再授权）' : a.kind === 'clip_draft' ? '会改这一段的时间轴，关键帧和草稿都会重出' : '会带着这条意见重写'
-function reviseBox(id, onsubmit, hint) {
+function reviseBox(id, onsubmit, hint, label = '按意见重写') {
   return '<div class="revise" id="rv' + id + '"><label class="vh" for="rt' + id + '">修改意见</label><textarea id="rt' + id + '" name="revise-' + id + '" data-keep="rt' + esc(S.project) + '/' + id + '" autocomplete="off" aria-describedby="rvh' + id + '" placeholder="哪里不对、要怎么改…"></textarea>' +
-    '<div class="note-bar"><span class="hint" id="rvh' + id + '">' + esc(hint) + '</span><button type="button" class="btn sm quiet" onclick="toggleRv(' + id + ')">收起</button><button type="button" class="btn sm primary" onclick="' + onsubmit + '">' + icon('edit') + '按意见重写</button></div></div>'
+    '<div class="note-bar"><span class="hint" id="rvh' + id + '">' + esc(hint) + '</span><button type="button" class="btn sm quiet" onclick="toggleRv(' + id + ')">收起</button><button type="button" class="btn sm primary" onclick="' + onsubmit + '">' + icon('edit') + label + '</button></div></div>'
 }
 function toggleRv(id) {
   const el = document.getElementById('rv' + id), open = el.classList.toggle('open')
@@ -610,6 +610,20 @@ async function sendCardRevise(review, artifact) {
   const v = needText(el, '先在意见框里写哪里要改'); if (!v) return
   if (await api('/api/reviews/' + review + '/decision', { action: 'revise', artifact, instruction: v }, '已按意见排队重写')) clearDraft(el)
   await refresh()
+}
+async function sendEdit(review, artifact) {
+  const el = document.getElementById('rt' + artifact)
+  const v = needText(el, '先写这一张哪里要改'); if (!v) return
+  if (await api('/api/reviews/' + review + '/decision', { action: 'edit', artifact, instruction: v }, '已排队：照这张改，授权后出 2 张')) clearDraft(el)
+  await refresh()
+}
+// Where a candidate drawn from another one came from and what was asked; the one it came from is marked as the original.
+function editedOf(a, r) {
+  const p = a.payload || {}
+  if (r.artifacts.some(x => x.payload && x.payload.edited_from === a.id)) return '<div class="notice">' + icon('image') + '<span>原图：下面几张是照它改的，改得不好可以选回它</span></div>'
+  if (!p.edited_from) return ''
+  const k = r.artifacts.findIndex(x => x.id === p.edited_from)
+  return '<div class="notice ok">' + icon('edit') + '<span>照' + (k >= 0 ? '候选 ' + (k + 1) : '上一版') + '改：' + esc(p.instruction) + '</span></div>'
 }
 function drawer(title, body, key, badge, open) {
   return '<details class="drawer" data-key="' + esc(key) + '"' + (open ? ' open' : '') + '><summary>' + esc(title) + (badge || '') + '</summary><div class="body">' + body + '</div></details>'
@@ -644,9 +658,10 @@ function reviewCard(r, first) {
   const pickOne = r.point === 5 || r.point === 7
   // Candidates of one review come from the same text, so one note per review goes to it.
   const target = r.artifacts.find(a => a.revisable)
+  const editable = many && r.artifacts.some(a => a.editable)
   const note = target
-    ? '<div class="note"><label for="rc' + r.id + '">评审意见</label><textarea id="rc' + r.id + '" name="note-' + r.id + '" data-keep="rc' + esc(S.project) + '/' + r.id + '" autocomplete="off" aria-describedby="rh' + r.id + '" placeholder="哪里不对、要怎么改，例如：石台再旧一些，锁链上要有锈迹…"></textarea>' +
-      '<div class="note-bar"><span class="hint" id="rh' + r.id + '">' + esc(reviseHint(target)) + '</span><button type="button" class="btn primary" onclick="sendCardRevise(' + r.id + ',' + target.id + ')">' + icon('edit') + '按意见重写</button></div></div>'
+    ? '<div class="note"><label for="rc' + r.id + '">' + (editable ? '评审意见（几张都不对时用）' : '评审意见') + '</label><textarea id="rc' + r.id + '" name="note-' + r.id + '" data-keep="rc' + esc(S.project) + '/' + r.id + '" autocomplete="off" aria-describedby="rh' + r.id + '" placeholder="哪里不对、要怎么改，例如：石台再旧一些，锁链上要有锈迹…"></textarea>' +
+      '<div class="note-bar"><span class="hint" id="rh' + r.id + '">' + esc(reviseHint(target)) + (editable ? '。只想改某一张，点那张下面的「照这张改」' : '') + '</span><button type="button" class="btn primary" onclick="sendCardRevise(' + r.id + ',' + target.id + ')">' + icon('edit') + '按意见重写</button></div></div>'
     : '<div class="note none">这一步没有可改的文字。不满意就点「重出」，换一个种子再出一次。</div>'
   let decideBar = paid ? '<button type="button" class="btn" onclick="redo(' + r.id + ')">' + icon('redo') + '重出</button>' : ''
   decideBar += '<span class="sp"></span>'
@@ -659,8 +674,10 @@ function reviewCard(r, first) {
   let body
   if (many) {
     body = '<div class="cands">' + r.artifacts.map((a, i) => '<div class="cand">' + mediaOf(a, r, first) +
-      '<div class="cand-bar"><b>候选 ' + (i + 1) + '</b><span class="meta">第 ' + a.version + ' 版</span><span class="sp"></span><button type="button" class="btn pass" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button></div>' +
-      infoOf(a) + '</div>').join('') + '</div>' + desk(true, '')
+      '<div class="cand-bar"><b>候选 ' + (i + 1) + '</b><span class="meta">第 ' + a.version + ' 版</span><span class="sp"></span>' + (a.editable ? '<button type="button" class="btn" onclick="toggleRv(' + a.id + ')" aria-expanded="false" aria-controls="rv' + a.id + '">' + icon('edit') + '照这张改</button>' : '') +
+      '<button type="button" class="btn pass" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button></div>' +
+      (a.editable ? reviseBox(a.id, 'sendEdit(' + r.id + ',' + a.id + ')', '以这张为底，只改你写的地方，出 2 张新的（要授权 2 张）；这张也留着对比', '照这张改') : '') +
+      editedOf(a, r) + infoOf(a) + '</div>').join('') + '</div>' + desk(true, '')
   } else if (video) body = '<div class="stage">' + mediaOf(a0, r, first) + '</div>' + desk(true, infoOf(a0))
   else body = '<div class="split"><div class="stage">' + mediaOf(a0, r, first) + '</div>' + desk(false, infoOf(a0)) + '</div>'
   return '<section class="rv" aria-labelledby="rvh-' + r.id + '">' + head + body + '</section>'
