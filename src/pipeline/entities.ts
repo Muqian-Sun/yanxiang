@@ -5,7 +5,7 @@ import { image } from '../jobs/images.js'
 import type { Plugin } from '../plugins.js'
 import type { Section } from '../runner.js'
 import type { Artifact, NodeRun, Store } from '../store/store.js'
-import { CARDS, setupSection, type ScriptT } from '../tasks.js'
+import { CARDS, setupSection, type CharacterData, type ScriptT } from '../tasks.js'
 import type { Env, NodeDef, Ready } from './engine.js'
 
 type Roster = ScriptT['roster']
@@ -70,8 +70,8 @@ export function revision(store: Store, run: NodeRun, body: (a: Artifact) => stri
   return [{ title: '上一版', body: previous ? body(previous) : '' }, { title: '创作者的修改意见', body: run.instruction }]
 }
 
-async function write(env: Env, task: string, scope: string, run: NodeRun, sections: Section[], inputs: number[], kind: string): Promise<number[]> {
-  const result = await env.text({ card: CARDS[task]!, sections: [...sections, ...revision(env.store, run)], tag: `${task}-${scope.replaceAll('/', '-')}-${run.id}`, nodeRunId: run.id })
+async function write(env: Env, task: string, scope: string, run: NodeRun, sections: Section[], inputs: number[], kind: string, data?: unknown): Promise<number[]> {
+  const result = await env.text({ card: CARDS[task]!, sections: [...sections, ...revision(env.store, run)], data, tag: `${task}-${scope.replaceAll('/', '-')}-${run.id}`, nodeRunId: run.id })
   return [env.store.addArtifact({ kind, scope, payload: { text: result.output as string }, inputs, prompt_version: result.promptVersion, node_run_id: run.id, created_by: 'model' }).id]
 }
 
@@ -101,13 +101,17 @@ const brief: NodeDef = {
     const briefs = inputs.slice(2).map(id => store.artifact(id)).filter(a => a.kind === 'entity_brief')
     const earlier = briefs.filter(a => parse(a.scope).kind === kind)
     let sections: Section[]
+    let data: CharacterData | undefined
     if (kind === 'char') {
       const person = ep.roster.characters.find(c => c.name === name)!
+      const others = ep.roster.props.filter(p => !p.holder.includes(name))
+      data = { others: others.map(p => ({ name: p.name, holder: p.holder })) }
       sections = [
         { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
         { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
         // Names only: a holder is how the prop changes hands over the episode, which is no part of a costume.
         { title: '和他有关的道具', body: ep.roster.props.filter(p => p.holder.includes(name)).map(p => p.name).join('、') },
+        { title: '本集其他人的道具', body: others.map(p => p.name).join('、') },
         { title: '同集其他人物', body: earlier.map(a => `${parse(a.scope).name}：${[pick(text(a), '主色').replace('主色：', '主色 '), pick(text(a), '区分').replace('区分：', ''), pick(text(a), '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`).join('\n') },
       ]
     } else if (kind === 'loc') {
@@ -131,7 +135,7 @@ const brief: NodeDef = {
         { title: '已设计的道具', body: earlier.map(a => `${parse(a.scope).name}\n${text(a)}`).join('\n\n') },
       ]
     }
-    return write(env, TASK[kind], scope, run, sections, inputs, 'entity_brief')
+    return write(env, TASK[kind], scope, run, sections, inputs, 'entity_brief', data)
   },
 }
 

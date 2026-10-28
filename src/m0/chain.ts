@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { loadModels } from '../llm.js'
 import { loadPlugins } from '../plugins.js'
 import { runTask, TaskFailed, type RunResult, type Section } from '../runner.js'
-import { CARDS, screenplay, setupSection, voicedPerBeat, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
+import { CARDS, screenplay, setupSection, voicedPerBeat, type CharacterData, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const idea = process.argv[2]
@@ -110,12 +110,14 @@ const stateBefore = (id: string) => {
 const designs = new Map<string, string>()
 for (const [i, person] of script.roster.characters.entries()) {
   const others = [...designs.entries()].filter(([key]) => key.startsWith('char:')).map(([key, text]) => `${key.slice(5)}：${[pick(text, '主色').replace('主色：', '主色 '), pick(text, '区分').replace('区分：', ''), pick(text, '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`)
+  const theirs = script.roster.props.filter(prop => !prop.holder.includes(person.name))
   const text = await call<string>('character-design', `character-design-${i + 1}`, [
     { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
     { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
     { title: '和他有关的道具', body: script.roster.props.filter(prop => prop.holder.includes(person.name)).map(prop => prop.name).join('、') },
+    { title: '本集其他人的道具', body: theirs.map(prop => prop.name).join('、') },
     { title: '同集其他人物', body: others.join('\n') },
-  ])
+  ], { others: theirs.map(prop => ({ name: prop.name, holder: prop.holder })) } satisfies CharacterData)
   if (text) designs.set(`char:${person.name}`, text)
 }
 const propsAt = (location: string) => script.roster.props.filter(prop => prop.beats.some(id => beatById.get(id)?.location === location))

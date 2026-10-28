@@ -32,9 +32,9 @@ function project() {
 }
 
 /** The writer: a location brief places the stone table but not the marriage letter, which is carried. */
-function fakeText(calls: { task: string; sections: Section[] }[] = []): TextRunner {
-  return async ({ card, sections }) => {
-    calls.push({ task: card.name, sections })
+function fakeText(calls: { task: string; sections: Section[]; data?: unknown }[] = []): TextRunner {
+  return async ({ card, sections, data }) => {
+    calls.push({ task: card.name, sections, data })
     // A creator's instruction changes the design; the note for an upstream change alone does not. A description follows its brief.
     const asked = sections.find(s => s.title === '创作者的修改意见')?.body
     const change = asked && !asked.startsWith('它用到的上游') ? `\n修改：${asked}` : ''
@@ -85,13 +85,18 @@ test('the second character is designed after the first, seeing its colours', asy
 
 test('a character is told the names of his props, not how they change hands', async () => {
   const store = project()
-  const calls: { task: string; sections: Section[] }[] = []
+  const calls: { task: string; sections: Section[]; data?: unknown }[] = []
   const e = engine(store, fakeText(calls))
   await round(e)
   await round(e)
-  const props = (name: string) => calls.find(c => c.task === 'character-design' && c.sections[0]!.body.startsWith(name))!.sections.find(s => s.title === '和他有关的道具')!.body
-  expect(props('谢无咎')).toBe('')
-  expect(props('柳含烟')).toBe('婚书')
+  const design = (name: string) => calls.find(c => c.task === 'character-design' && c.sections[0]!.body.startsWith(name))!
+  const section = (name: string, title: string) => design(name).sections.find(s => s.title === title)!.body
+  expect(section('谢无咎', '和他有关的道具')).toBe('')
+  expect(section('柳含烟', '和他有关的道具')).toBe('婚书')
+  // Someone else's props are named to him, and his design is checked against them.
+  expect(section('谢无咎', '本集其他人的道具')).toBe('石台、婚书')
+  expect(section('柳含烟', '本集其他人的道具')).toBe('石台')
+  expect(design('柳含烟').data).toEqual({ others: [{ name: '石台', holder: '固定在洞中央' }] })
 })
 
 test('props are designed in order, and a location waits for its props and is told who holds them', async () => {

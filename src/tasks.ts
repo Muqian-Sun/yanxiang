@@ -202,6 +202,8 @@ export const voicedCount = (text: string) => text.replace(/[\s\p{P}\p{S}]/gu, ''
 export function voicedPerBeat(beats: { id: string; lines: { text: string }[] }[]): Record<string, number> {
   return Object.fromEntries(beats.map(beat => [beat.id, beat.lines.reduce((sum, line) => sum + voicedCount(line.text), 0)]))
 }
+/** Props of the episode that someone else holds: the video binds every mention of a prop's name to its picture. */
+export type CharacterData = { others: { name: string; holder: string }[] }
 export type ViewGroupsData = { cuts: string[] }
 /** The shortest shot, by the creator (2026-10-28): H3 had only been tried at 3 cuts in 15 s, and a cut of about a second looked too choppy to trust. */
 export const MIN_SHOT = 4
@@ -255,7 +257,15 @@ export const CARDS: Record<string, Card> = {
       return problems
     },
   }),
-  'character-design': card<string, unknown>({ name: 'character-design', output: 'text', checks: lineList(['性别与年龄', '锚点', '身高', '主色', '区分']) }),
+  'character-design': card<string, CharacterData>({
+    name: 'character-design', output: 'text',
+    checks: (out, data) => {
+      const problems = lineList(['性别与年龄', '锚点', '身高', '主色', '区分'])(out)
+      const taken = data.others.filter(p => out.includes(p.name))
+      if (taken.length) problems.push(`这些是本集别人的道具：${taken.map(p => `${p.name}（${p.holder}）`).join('、')}。他身上的东西不用这些名字，换个叫法或者不写`)
+      return problems
+    },
+  }),
   'location-design': card<string, unknown>({ name: 'location-design', output: 'text', checks: lineList(['身份', '视觉中心', '陈设', '尺度', '色彩', '锚点']) }),
   'prop-design': card<string, unknown>({ name: 'prop-design', output: 'text', checks: lineList(['文字', '锚点']) }),
   'portrait-desc': card<string, unknown>({ name: 'portrait-desc', output: 'text', checks: boundary([...STYLE_WORDS, ...FRAME_WORDS, ...LIGHT_WORDS]) }),

@@ -14,9 +14,17 @@ test('a scene description may write its light but not the camera', () => {
   expect(check('location-desc', '机位放在大殿门口。')).toHaveLength(1)
 })
 
+const design = '性别与年龄：男，看起来二十岁\n脸型：窄长脸\n随身佩物：腰牌挂在右侧腰带下\n锚点：窄长脸、顶髻\n身高：头顶低于门框上沿一掌\n主色：浅青灰\n区分：无冠顶髻'
+
 test('a character design without the colour and distinction lines is sent back', () => {
-  expect(check('character-design', '脸型：鹅蛋脸\n发型：半挽半披')).toHaveLength(5)
-  expect(check('character-design', '性别与年龄：女，看起来二十四岁\n脸型：鹅蛋脸\n锚点：鹅蛋脸、半挽发髻\n身高：头顶与门框上沿齐平\n主色：雪白，辅色石青\n区分：唯一穿白的人')).toEqual([])
+  expect(check('character-design', '脸型：鹅蛋脸\n发型：半挽半披', { others: [] })).toHaveLength(5)
+  expect(check('character-design', '性别与年龄：女，看起来二十四岁\n脸型：鹅蛋脸\n锚点：鹅蛋脸、半挽发髻\n身高：头顶与门框上沿齐平\n主色：雪白，辅色石青\n区分：唯一穿白的人', { others: [] })).toEqual([])
+})
+
+test('a character design that gives him a thing named like someone else\'s prop is sent back', () => {
+  const others = [{ name: '腰牌', holder: '赵衡，最终炸裂' }, { name: '名册', holder: '赵衡→守卫' }]
+  expect(check('character-design', design, { others })).toEqual(['这些是本集别人的道具：腰牌（赵衡，最终炸裂）。他身上的东西不用这些名字，换个叫法或者不写'])
+  expect(check('character-design', design.replace('腰牌', '弟子木牌'), { others })).toEqual([])
 })
 
 const timeline = (lines: { speaker: string; text: string; start: number; end: number }[], present = { characters: [] as string[], props: [] as string[] }, cuts?: { index: number; start: number; end: number; backs?: string[] }[]) => ({
