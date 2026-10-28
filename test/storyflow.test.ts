@@ -97,3 +97,18 @@ test('a story cut off while it was being written carries on from where it stoppe
   expect(calls).toEqual(['script-extract'])
   expect(again.resumeInterrupted()).toEqual([])
 })
+
+test('after the creator\'s note the screenplay is rewritten once by that note and shown, even when it runs long', async () => {
+  const notes: string[] = []
+  const st = new Stories(ROOT, mkdtempSync(join(tmpdir(), 'yx-story-')), writer([55, 67], notes))
+  const { id } = st.start('废柴觉醒')
+  await settle(st, id)
+  st.choose(id, 0)
+  await settle(st, id)
+  st.revise(id, '退婚之后别突然冒出个盒子')
+  await settle(st, id)
+  const story = st.get(id)
+  expect(story.error).toBeUndefined()
+  expect(story.script!.scenes[0]!.beats[0]!.seconds).toBe(67)
+  expect(notes).toEqual(['创作者的意见：退婚之后别突然冒出个盒子\n\n照这些意见改上一版：被指出的地方按改法改，其余保留。'])
+})

@@ -67,7 +67,8 @@ export class Stories {
     for (const id of readdirSync(this.dir).filter(x => existsSync(join(this.dir, x, 'story.json')))) {
       const story = JSON.parse(readFileSync(join(this.dir, id, 'story.json'), 'utf8')) as Story
       if (!story.step || story.project || this.busy.has(id)) continue
-      if (story.text && !story.script) this.run(story, s => this.extract(s))
+      // A screenplay rewritten for the creator's note is extracted as it is, for the creator to review.
+      if (story.text && !story.script) this.run(story, s => this.extract(s, !s.notes?.length))
       else if (story.chosen !== undefined && !story.script) this.choose(id, story.chosen)
       else if (!story.directions) this.run(story, async s => {
         s.directions = (await this.call<{ directions: Direction[] }>(s, 'story-directions', 'directions', [{ title: '一句话想法', body: s.idea }, { title: '单集时长', body: length }])).directions
@@ -98,8 +99,10 @@ export class Stories {
     story.step = tag
     this.save(story)
     const logDir = join(this.dir, story.id, 'logs')
-    if (this.writer) return (await this.writer(task, tag, sections, data, logDir)) as T
-    return (await runTask<T>({ root: this.root, card: CARDS[task]!, sections, data, plugins: this.pair, models: this.models, logDir, tag })).output
+    // Every call keeps its own log: a later rewrite must not overwrite the version the creator asked for.
+    const logTag = existsSync(join(logDir, `${tag}.json`)) ? `${tag}-${new Date().toISOString().replace(/[-:.TZ]/g, '')}` : tag
+    if (this.writer) return (await this.writer(task, logTag, sections, data, logDir)) as T
+    return (await runTask<T>({ root: this.root, card: CARDS[task]!, sections, data, plugins: this.pair, models: this.models, logDir, tag: logTag })).output
   }
 
   /** Runs one step in the background; the page polls the story. A story runs one step at a time. */
@@ -153,7 +156,7 @@ export class Stories {
       s.draft = await this.call<string>(s, 'script', 'script', this.scriptSections(s))
       s.review = await this.call<string>(s, 'script-review', 'script-review', [{ title: '本集设定', body: s.setup }, { title: '剧本正文', body: s.draft }])
       s.text = s.review.trim() === '无' ? s.draft : await this.rewrite(s, s.draft, s.review)
-      await this.extract(s)
+      await this.extract(s, true)
     })
   }
 
@@ -166,7 +169,8 @@ export class Stories {
     return this.run(story, async s => {
       s.text = await this.rewrite(s, s.text!, `创作者的意见：${note.trim()}`)
       s.notes = [...(s.notes ?? []), note.trim()]
-      await this.extract(s)
+      this.save(s)
+      await this.extract(s, false)
     })
   }
 
@@ -184,14 +188,16 @@ export class Stories {
 
   /**
    * Beats and roster from the screenplay. The extraction estimates the length honestly and cannot
-   * shorten the story, so when the beats run outside the sample's length the screenplay itself is
-   * rewritten to the measured number of seconds, and extracted again.
+   * shorten the story, so before the creator has seen it (`fit`), a screenplay outside the sample's
+   * length is rewritten to the measured number of seconds and extracted again. After the creator's
+   * note it is extracted once and shown as it is (creator, 2026-10-28: revise by my note, then let me
+   * review); the page marks the length and the project cannot be created until it fits.
    */
-  private async extract(s: Story) {
+  private async extract(s: Story, fit: boolean) {
     for (let round = 0; ; round++) {
       await this.extractOnce(s)
       const total = s.script!.scenes.flatMap(x => x.beats).reduce((sum, b) => sum + b.seconds, 0)
-      if (total >= SAMPLE.min && total <= SAMPLE.max) return
+      if (!fit || (total >= SAMPLE.min && total <= SAMPLE.max)) return
       s.script = undefined
       if (round >= FIT_ROUNDS) throw new Error(`剧本拆出来约 ${total} 秒，自动删改 ${FIT_ROUNDS} 次还不在 ${length}；在下面写意见让它改`)
       const target = Math.round((SAMPLE.min + SAMPLE.max) / 2)

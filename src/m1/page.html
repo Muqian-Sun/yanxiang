@@ -599,10 +599,14 @@ function storyPage() {
   side += drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss')
   side += drawer('审读意见（已按它改过）', '<pre>' + esc(s.review) + '</pre>', 'sr')
   if (s.notes && s.notes.length) side += drawer('你提过的意见（' + s.notes.length + ' 条，已改）', '<pre>' + esc(s.notes.join('\n\n')) + '</pre>', 'sn')
+  // The sample is 45–60 seconds (src/m1/spec.ts); the server refuses a project outside it.
+  const fits = secs >= 45 && secs <= 60
+  if (!fits) h += '<div class="notice bad" style="margin-bottom:14px">' + icon('alert') + '<span>按拆拍估算约 ' + secs + ' 秒，要在 45–60 秒之间（' + (secs > 60 ? '多了 ' + (secs - 60) : '少了 ' + (45 - secs)) + ' 秒）。在下面写意见说删哪里、加哪里，改好才能建项目。</span></div>'
+  else if (s.notes && s.notes.length) h += '<div class="notice ok" style="margin-bottom:14px">' + icon('check') + '<span>这一版按你最近一条意见改过，等你审。</span></div>'
   h += '<h3 class="sec">★3 看剧本 · ' + esc(s.directions[s.chosen].title) + '</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div>' + rosterAside(s.script.roster, side) + '</div>'
   if (s.project) return h + '<div class="notice ok" style="margin-top:16px">' + icon('check') + '<span>已经建成项目，在左上角的项目里切过去看。</span></div>'
   h += '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：主角觉醒得太突然，前面要有铺垫"></textarea>' +
-    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button><span style="flex:1"></span><button class="btn accent" onclick="makeProject()">' + icon('check') + '用这个剧本建项目</button></div></div>'
+    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button><span style="flex:1"></span><button class="btn accent" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 45–60 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button></div></div>'
   return h
 }
 
