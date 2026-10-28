@@ -145,15 +145,17 @@ export class Stories {
   }
 
   /** The chosen direction becomes the setup, the screenplay (reviewed and rewritten once) and its beats. */
-  choose(id: string, index: number): Story {
+  /** `carry`: writing the same direction again, the creator's notes on the earlier version go to the new draft. */
+  choose(id: string, index: number, carry = false): Story {
     const story = this.get(id)
     const chosen = story.directions?.[index]
     if (!chosen) throw new Error(`没有第 ${index + 1} 个方向`)
     if (story.project) throw new Error('这个故事已经建成项目了')
+    const carried = carry && story.chosen === index ? story.notes ?? [] : []
     return this.run(story, async s => {
-      Object.assign(s, { chosen: index, setup: undefined, draft: undefined, review: undefined, text: undefined, script: undefined, notes: [] })
+      Object.assign(s, { chosen: index, setup: undefined, draft: undefined, review: undefined, text: undefined, script: undefined, notes: carried })
       s.setup = await this.call<string>(s, 'story-setup', 'setup', [{ title: '选定的方向', body: fmtDirection(chosen) }, { title: '单集时长', body: length }])
-      s.draft = await this.call<string>(s, 'script', 'script', this.scriptSections(s))
+      s.draft = await this.call<string>(s, 'script', 'script', [...this.scriptSections(s), ...(carried.length ? [{ title: '创作者看过上一版后的意见', body: carried.join('\n\n') }] : [])])
       s.review = await this.call<string>(s, 'script-review', 'script-review', [{ title: '本集设定', body: s.setup }, { title: '剧本正文', body: s.draft }])
       s.text = s.review.trim() === '无' ? s.draft : await this.rewrite(s, s.draft, s.review)
       await this.extract(s, true)

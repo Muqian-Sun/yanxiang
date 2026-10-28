@@ -550,7 +550,7 @@ async function startStory() {
 }
 const openStory = id => { SID = id; ST = null; lastKey = ''; loadStories() }
 const backToStories = () => { SID = null; ST = null; lastKey = ''; loadStories() }
-async function chooseDir(i) { if (await api('/api/stories/' + SID + '/choose', { index: i }, '开始写剧本，大约几分钟')) loadStories() }
+async function chooseDir(i, carry) { if (await api('/api/stories/' + SID + '/choose', { index: i, carry: !!carry }, carry ? '带着你的意见从头重写，大约几分钟' : '开始写剧本，大约几分钟')) loadStories() }
 async function redirectStory() {
   const note = ($('#dnote') && $('#dnote').value.trim()) || ''
   if (!note && !await ask('不写意见直接重出？', '没写意见的话，只是用同一句想法再出三个。', '直接重出')) return
@@ -568,7 +568,7 @@ async function makeProject() {
 }
 function storyPage() {
   if (!SID) {
-    return '<div class="card hero"><h2>从一句想法开始</h2><div class="muted">先出三个故事方向，你挑一个，再写成 45–60 秒的剧本：本集设定、正文、审读、改写、拆拍，一步步自动完成。</div>' +
+    return '<div class="card hero"><h2>从一句想法开始</h2><div class="muted">先出三个故事方向，你挑一个，再写成 ' + (PROJ ? PROJ.sample.min + '–' + PROJ.sample.max : '') + ' 秒的剧本：本集设定、正文、审读、改写、拆拍，一步步自动完成。</div>' +
       '<textarea id="idea" data-keep="idea" placeholder="例如：被认为是废柴的小伙其实是绝顶资质，一次奇遇之后觉醒，一鸣惊人"></textarea>' +
       '<div><button class="btn accent" onclick="startStory()">' + icon('sparkle') + '出三个方向</button></div></div>' +
       (STORIES.length ? '<h3 class="sec">之前的故事</h3><div class="stories">' + STORIES.map(s => '<div class="card story-row" onclick="openStory(\'' + s.id + '\')"><span class="t">' + esc(s.directions && s.chosen !== undefined ? s.directions[s.chosen].title : s.idea) + '</span>' + storyStatus(s) + '</div>').join('') + '</div>' : '')
@@ -585,7 +585,7 @@ function storyPage() {
       '<div class="rvbar"><span class="hint">会带着这三个方向和你的意见，重新出三个</span><span class="sp"></span><button class="btn accent" onclick="redirectStory()">' + icon('redo') + '按意见重新出</button></div></div>'
   }
   if (s.busy) return h + '<div class="card working"><span class="spin"></span><div><div>正在写「' + esc((STEPS.find(x => x[0] === s.step) || [, '剧本'])[1]) + '」</div><div class="muted small">整个剧本一般 3–6 分钟，写完自动显示</div></div></div>'
-  const rewriteBtn = s.chosen !== undefined ? '<button class="btn" onclick="chooseDir(' + s.chosen + ')">' + icon('redo') + '从头重写这个方向</button>' : ''
+  const rewriteBtn = s.chosen !== undefined ? '<button class="btn" onclick="chooseDir(' + s.chosen + ', true)">' + icon('redo') + '从头重写这个方向' + (s.notes && s.notes.length ? '（带上你的意见）' : '') + '</button>' : ''
   if (!s.script && !s.text) return h + rewriteBtn
   if (!s.script) {
     return h + '<h3 class="sec">★3 剧本正文 · 还没拆成拍</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div><div class="card aside">' +
@@ -599,14 +599,15 @@ function storyPage() {
   side += drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss')
   side += drawer('审读意见（已按它改过）', '<pre>' + esc(s.review) + '</pre>', 'sr')
   if (s.notes && s.notes.length) side += drawer('你提过的意见（' + s.notes.length + ' 条，已改）', '<pre>' + esc(s.notes.join('\n\n')) + '</pre>', 'sn')
-  // The sample is 45–60 seconds (src/m1/spec.ts); the server refuses a project outside it.
-  const fits = secs >= 45 && secs <= 60
-  if (!fits) h += '<div class="notice bad" style="margin-bottom:14px">' + icon('alert') + '<span>按拆拍估算约 ' + secs + ' 秒，要在 45–60 秒之间（' + (secs > 60 ? '多了 ' + (secs - 60) : '少了 ' + (45 - secs)) + ' 秒）。在下面写意见说删哪里、加哪里，改好才能建项目。</span></div>'
+  // The sample's length comes from src/m1/spec.ts; the server refuses a project outside it.
+  const lo = PROJ ? PROJ.sample.min : 0, hi = PROJ ? PROJ.sample.max : Infinity
+  const fits = secs >= lo && secs <= hi
+  if (!fits) h += '<div class="notice bad" style="margin-bottom:14px">' + icon('alert') + '<span>按拆拍估算约 ' + secs + ' 秒，要在 ' + lo + '–' + hi + ' 秒之间（' + (secs > hi ? '多了 ' + (secs - hi) : '少了 ' + (lo - secs)) + ' 秒）。在下面写意见说删哪里、加哪里，改好才能建项目。</span></div>'
   else if (s.notes && s.notes.length) h += '<div class="notice ok" style="margin-bottom:14px">' + icon('check') + '<span>这一版按你最近一条意见改过，等你审。</span></div>'
   h += '<h3 class="sec">★3 看剧本 · ' + esc(s.directions[s.chosen].title) + '</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div>' + rosterAside(s.script.roster, side) + '</div>'
   if (s.project) return h + '<div class="notice ok" style="margin-top:16px">' + icon('check') + '<span>已经建成项目，在左上角的项目里切过去看。</span></div>'
   h += '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：主角觉醒得太突然，前面要有铺垫"></textarea>' +
-    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button><span style="flex:1"></span><button class="btn accent" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 45–60 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button></div></div>'
+    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button>' + rewriteBtn + '<span style="flex:1"></span><button class="btn accent" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 45–60 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button></div></div>'
   return h
 }
 

@@ -10,6 +10,7 @@ import type { Artifact, Store } from '../store/store.js'
 import type { Stories } from './storyflow.js'
 import { describePending } from './env.js'
 import { library } from './library.js'
+import { SAMPLE } from './spec.js'
 
 const POINTS: Record<number, string> = { 2: '故事方向', 3: '剧本', 4: '外观设计', 5: '定妆照与试音', 6: '机位图与关键帧', 7: '草稿', 8: '整集草稿', 9: '交付片' }
 /** Nodes in pipeline order, as the progress page shows them. */
@@ -102,7 +103,7 @@ export function serve(app: App, port: number): string {
       const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as Record<string, unknown>) : {}
       const { store, engine, gpu } = app.current()
       try {
-        if (path === '/api/projects') return Response.json({ projects: projects(app), paused: app.paused })
+        if (path === '/api/projects') return Response.json({ projects: projects(app), paused: app.paused, sample: SAMPLE })
         if (path === '/api/projects/switch' && req.method === 'POST') {
           const dir = resolve(String(body.dir))
           if (!projects(app).some(p => p.dir === dir)) throw new Error(`没有这个项目：${dir}`)
@@ -121,7 +122,7 @@ export function serve(app: App, port: number): string {
           if (!action) return Response.json({ ...app.stories.get(id!), busy: app.stories.isBusy(id!) })
           if (req.method !== 'POST') throw new Error('要用 POST')
           if (action === 'redirect') app.stories.redirect(id!, String(body.note ?? ''))
-          else if (action === 'choose') app.stories.choose(id!, Number(body.index))
+          else if (action === 'choose') app.stories.choose(id!, Number(body.index), Boolean(body.carry))
           else if (action === 'revise') app.stories.revise(id!, String(body.note ?? ''))
           else if (action === 'project') {
             const dir = app.stories.createProject(id!, app.projects)
