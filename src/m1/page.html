@@ -3,288 +3,419 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>言象 · 审核台</title>
+<meta name="theme-color" content="#ECEFEE">
+<title>言象审核台</title>
 <style>
+/*
+ * Palette from blue-green landscape painting (青绿山水) minerals: a cool moon-white workspace, ink text,
+ * azurite for navigation and primary actions, malachite for approval, gold leaf for whatever waits on
+ * the creator (reviews, grants that cost money), cinnabar only for errors. Pictures and clips sit on a
+ * dark ink well so their colour is judged against neutral, not against the page.
+ */
 :root {
-  --paper: #f5f2eb; --panel: #fffdf9; --panel-2: #faf7f1; --ink: #1d1b18; --ink-2: #4a463f; --muted: #8b857a;
-  --line: #e7e1d6; --line-2: #efeae1;
-  --side: #1b1a17; --side-2: #26241f; --side-ink: #e9e4d8; --side-muted: #8f897c;
-  --cinnabar: #b4432b; --cinnabar-soft: #f7e6e0; --jade: #2f6f5e; --jade-soft: #e3efe9; --gold: #a8803e; --gold-soft: #f6eedd;
-  --indigo: #4c5a8a; --indigo-soft: #e8ebf5; --bad: #b23a32; --bad-soft: #fbe5e2;
-  --r: 12px; --r-sm: 8px; --shadow: 0 1px 2px rgba(29,27,24,.04), 0 6px 20px rgba(29,27,24,.06);
-  --serif: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
-  --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color-scheme: light;
+  --moon: #ECEFEE; --silk: #F8F9F8; --rail: #E1E6E5;
+  --ink: #1E2629; --ink-2: #5B676C; --line: #D3DAD9; --line-2: #E3E8E7;
+  --azurite: #1F4E6E; --azurite-hover: #173E58; --azurite-soft: #DDE7EE;
+  --malachite: #2B6E5B; --malachite-hover: #225A4A; --malachite-soft: #DCEBE5;
+  --gold: #C9912E; --gold-hover: #B9852A; --gold-ink: #7A520F; --gold-soft: #F6EBD3;
+  --well: #1B2125; --well-muted: #8D989E;
+  --bad: #A7332B; --bad-soft: #F6E1DE;
+  --ui: "PingFang SC", "Hiragino Sans GB", -apple-system, "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --read: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif CJK SC", serif;
 }
 * { box-sizing: border-box }
-html, body { margin: 0; height: 100% }
-body { font: 14px/1.65 var(--sans); background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased }
+html { scroll-padding-top: 150px; scroll-padding-bottom: 200px; -webkit-text-size-adjust: 100% }
+html, body { margin: 0 }
+@media (pointer: fine) { html { overscroll-behavior: none } }
+body { font: 14px/1.6 var(--ui); background: var(--moon); color: var(--ink); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: rgba(31, 78, 110, .14) }
 button, select, textarea, input { font: inherit; color: inherit }
-a { color: var(--cinnabar) }
+button, a, summary, select, label { touch-action: manipulation }
+a { color: var(--azurite) }
+:focus-visible { outline: 2px solid var(--azurite); outline-offset: 2px }
 svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
+.skip { position: absolute; left: 12px; top: -48px; z-index: 50; background: var(--azurite); color: #fff; padding: 8px 14px; border-radius: 6px; text-decoration: none }
+.skip:focus-visible { top: 12px }
 
 /* ---------- side ---------- */
-.app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh }
-.side { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; padding: 18px 14px 14px }
-.brand { display: flex; align-items: baseline; gap: 10px; padding: 0 8px 16px }
-.brand b { font: 600 24px/1 var(--serif); letter-spacing: 6px }
-.brand span { color: var(--side-muted); font-size: 12px; letter-spacing: 1px }
-.proj { background: var(--side-2); border-radius: var(--r-sm); padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px }
-.proj select { width: 100%; background: #312e28; border: 1px solid #3c3831; border-radius: 6px; padding: 6px 8px; color: var(--side-ink); outline: none }
-.row2 { display: flex; gap: 8px; align-items: center }
-.run { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; border-radius: 6px; border: 1px solid #3c3831; background: #312e28; cursor: pointer; font-size: 12px; color: var(--side-ink) }
-.run.on { background: var(--jade); border-color: var(--jade); color: #fff }
-.run:hover { filter: brightness(1.08) }
-.gpu { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--side-muted); white-space: nowrap }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #6b665c }
-.dot.on { background: #4cc38a; box-shadow: 0 0 0 3px rgba(76,195,138,.18) }
-.dot.off { background: #e5534b }
-.spent { font-size: 12px; color: var(--side-muted); padding: 0 2px }
-.nav h4 { margin: 14px 10px 6px; font-size: 11px; color: var(--side-muted); font-weight: 500; letter-spacing: 2px }
-.nav .item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; cursor: pointer; color: #cfc9bc; user-select: none }
-.nav .item:hover { background: var(--side-2); color: #fff }
-.nav .item.sel { background: #f5f2eb; color: var(--ink) }
-.nav .item .n { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--cinnabar); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center }
-.nav .item.sel .n { background: var(--cinnabar) }
-.nav .item .n.muted { background: #3a3730; color: #cfc9bc }
-.nav .none { padding: 4px 10px; font-size: 12px; color: var(--side-muted) }
+.app { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh }
+.side { position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain; background: var(--rail); border-right: 1px solid var(--line); padding: 18px 12px 18px; display: flex; flex-direction: column; gap: 16px }
+.brand { display: flex; align-items: baseline; gap: 10px; padding: 0 8px }
+.brand b { font: 600 22px/1 var(--ui); letter-spacing: .12em; color: var(--azurite) }
+.brand span { font-size: 12px; color: var(--ink-2) }
+.engine { display: grid; gap: 9px; padding: 10px; background: var(--silk); border: 1px solid var(--line); border-radius: 8px }
+.engine select { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background-color: #fff; color: var(--ink) }
+.state { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 28px }
+.state .sp { flex: 1 }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #9AA5A9; flex: none }
+.dot.on { background: var(--malachite) } .dot.off { background: var(--bad) } .dot.idle { background: var(--gold) }
+.ledger { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; padding-top: 8px; border-top: 1px solid var(--line-2); font-size: 12px; color: var(--ink-2) }
+.ledger dd { margin: 0; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums }
+.nav .grp { margin: 14px 8px 4px; font: 500 12px/1.4 var(--ui); color: var(--ink-2); display: flex; justify-content: space-between }
+.nav .grp:first-child { margin-top: 0 }
+.nav .item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--ink); text-decoration: none }
+.nav .item:hover { background: rgba(255, 255, 255, .65) }
+.nav .item.sel { background: var(--silk); color: var(--azurite); font-weight: 600; box-shadow: inset 3px 0 0 var(--azurite) }
+.nav .item .lb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.nav .n { margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; background: var(--line); color: var(--ink-2) }
+.nav .n.need { background: var(--gold); color: var(--ink) }
+.nav .n.bad { background: var(--bad); color: #fff }
+.nav .none { padding: 4px 10px; font-size: 12px; color: var(--ink-2) }
 
 /* ---------- top ---------- */
 .mainwrap { min-width: 0; display: flex; flex-direction: column }
-.top { position: sticky; top: 0; z-index: 4; background: rgba(245,242,235,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding: 16px 32px 12px }
-.top h1 { margin: 0; font: 600 22px/1.3 var(--serif); letter-spacing: 1px }
-.top .sub { color: var(--muted); font-size: 13px; margin-top: 2px }
-.phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 12px }
+.top { position: sticky; top: 0; z-index: 4; background: rgba(236, 239, 238, .94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); padding: 14px 32px 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px 36px; align-items: end }
+.top h1 { margin: 0; font: 600 20px/1.3 var(--ui); text-wrap: balance }
+.top .sub { color: var(--ink-2); font-size: 13px; margin-top: 2px }
+.phases { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px }
 .phase { min-width: 0 }
-.phase .lbl { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); margin-bottom: 5px }
-.phase .lbl em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums }
+.phase .lbl { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-2); margin-bottom: 4px; white-space: nowrap }
+.phase .lbl em { font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap }
 .segbar { display: flex; gap: 2px; height: 6px }
-.segbar i { flex: 1; border-radius: 3px; background: var(--line); overflow: hidden; display: flex }
-.segbar i b { height: 100% }
-.segbar b.g { background: var(--jade) } .segbar b.y { background: var(--gold) } .segbar b.n { background: var(--indigo) } .segbar b.r { background: var(--bad) }
-main { padding: 24px 32px 140px; max-width: 1480px; width: 100% }
+.segbar i { flex: 1; background: var(--line); display: flex; overflow: hidden; border-radius: 1px }
+.segbar b { height: 100% }
+.segbar b.g { background: var(--malachite) } .segbar b.y { background: var(--gold) } .segbar b.n { background: var(--azurite) } .segbar b.r { background: var(--bad) }
+main { padding: 26px 32px 220px; max-width: 1600px; width: 100% }
+main:focus { outline: none }
 
 /* ---------- common ---------- */
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow) }
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; transition: .15s; white-space: nowrap }
-.btn:hover { border-color: #cfc6b5; background: #fff }
-.btn:disabled { opacity: .5; cursor: default }
-.btn.primary { background: var(--jade); border-color: var(--jade); color: #fff }
-.btn.primary:hover { filter: brightness(1.07) }
-.btn.accent { background: var(--cinnabar); border-color: var(--cinnabar); color: #fff }
-.btn.accent:hover { filter: brightness(1.07) }
-.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2) }
-.btn.ghost:hover { background: var(--panel-2); border-color: var(--line) }
-.btn.sm { padding: 4px 10px; font-size: 12px; border-radius: 6px }
-.badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11px; background: var(--panel-2); color: var(--ink-2); border: 1px solid var(--line-2); white-space: nowrap }
-.badge.gold { background: var(--gold-soft); color: #7a5b22; border-color: #ecdfc3 }
-.badge.jade { background: var(--jade-soft); color: var(--jade); border-color: #cfe3d9 }
-.badge.red { background: var(--cinnabar-soft); color: var(--cinnabar); border-color: #f0d2c9 }
-.badge.blue { background: var(--indigo-soft); color: var(--indigo); border-color: #d6dbee }
-.muted { color: var(--muted) }
-.small { font-size: 12px }
-.notice { display: flex; gap: 8px; align-items: flex-start; padding: 9px 12px; border-radius: 8px; font-size: 13px; background: var(--gold-soft); color: #6f531d; border: 1px solid #ecdfc3 }
-.notice.bad { background: var(--bad-soft); color: var(--bad); border-color: #f2cfca }
-.notice.ok { background: var(--jade-soft); color: var(--jade); border-color: #cfe3d9 }
-.empty { padding: 72px 20px; text-align: center; color: var(--muted) }
-.empty svg.i { width: 34px; height: 34px; margin-bottom: 10px; stroke-width: 1.2; color: #c3bba9 }
-.empty b { display: block; color: var(--ink-2); font-weight: 500; font-size: 15px; margin-bottom: 4px }
-h3.sec { font: 600 16px/1.4 var(--serif); margin: 28px 0 12px; display: flex; align-items: center; gap: 8px }
-h3.sec:first-child { margin-top: 0 }
-pre { white-space: pre-wrap; margin: 0; font: 13px/1.75 var(--sans); color: var(--ink-2) }
-textarea { width: 100%; min-height: 76px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; background: #fff; resize: vertical; outline: none; transition: .15s }
-textarea:focus { border-color: #c9b98f; box-shadow: 0 0 0 3px rgba(168,128,62,.12) }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--silk); color: var(--ink); cursor: pointer; white-space: nowrap; font-weight: 500; text-decoration: none }
+.btn:hover { background: #fff; border-color: #8E9BA0 }
+.btn:active { background: var(--line-2) }
+.btn:disabled { opacity: .55; cursor: default }
+.btn[aria-busy="true"] { cursor: progress }
+.btn[aria-busy="true"]::after { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite }
+.btn.primary { background: var(--azurite); border-color: var(--azurite); color: #fff }
+.btn.primary:hover { background: var(--azurite-hover); border-color: var(--azurite-hover) }
+.btn.pass { background: var(--malachite); border-color: var(--malachite); color: #fff }
+.btn.pass:hover { background: var(--malachite-hover); border-color: var(--malachite-hover) }
+.btn.spend { background: var(--gold); border-color: var(--gold-hover); color: var(--ink) }
+.btn.spend:hover { background: var(--gold-hover) }
+.btn.quiet { background: transparent; border-color: transparent; color: var(--ink-2) }
+.btn.quiet:hover { background: rgba(255, 255, 255, .7); color: var(--ink) }
+.btn.sm { min-height: 28px; padding: 3px 10px; font-size: 12px }
+.btn.big { min-height: 40px; padding: 8px 20px; font-size: 15px }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 3px; font-size: 12px; line-height: 20px; font-weight: 500; background: var(--line-2); color: var(--ink-2); white-space: nowrap }
+.tag.gold { background: var(--gold-soft); color: var(--gold-ink) }
+.tag.green { background: var(--malachite-soft); color: var(--malachite) }
+.tag.red { background: var(--bad-soft); color: var(--bad) }
+.tag.blue { background: var(--azurite-soft); color: var(--azurite) }
+.meta { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap }
+.hint { font-size: 12px; color: var(--ink-2) }
+.notice { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; font-size: 13px; background: var(--gold-soft); color: var(--gold-ink); border-left: 3px solid var(--gold); border-radius: 0 4px 4px 0 }
+.notice > span { min-width: 0; overflow-wrap: anywhere }
+.notice.bad { background: var(--bad-soft); color: var(--bad); border-left-color: var(--bad) }
+.notice.ok { background: var(--malachite-soft); color: var(--malachite); border-left-color: var(--malachite) }
+.notice .btn { margin-left: auto }
+.empty { padding: 72px 20px; max-width: 480px; margin: 0 auto; text-align: center; color: var(--ink-2) }
+.empty svg.i { width: 32px; height: 32px; margin-bottom: 10px; stroke-width: 1.3; color: #9AA7AB }
+.empty b { display: block; color: var(--ink); font-weight: 600; font-size: 16px; margin-bottom: 4px }
+.empty p { margin: 0 0 16px }
+h2.sec { font: 600 16px/1.4 var(--ui); margin: 36px 0 14px; display: flex; align-items: center; gap: 8px; text-wrap: balance }
+h2.sec:first-child { margin-top: 0 }
+pre { white-space: pre-wrap; margin: 0; font: 15px/1.9 var(--read); color: var(--ink); max-width: 40em; overflow-wrap: anywhere }
+textarea { display: block; width: 100%; min-height: 96px; padding: 10px 12px; border: 1px solid #B6C0C3; border-radius: 6px; background: #fff; resize: vertical; line-height: 1.7 }
+textarea:hover { border-color: #8E9BA0 }
+textarea:focus-visible { outline: none; border-color: var(--azurite); box-shadow: 0 0 0 3px rgba(31, 78, 110, .2) }
+textarea[aria-invalid="true"] { border-color: var(--bad); box-shadow: 0 0 0 3px rgba(167, 51, 43, .15) }
+.field-err { color: var(--bad); font-size: 12px; margin-top: 4px }
+textarea::placeholder { color: #87949A }
 .drawer { border-top: 1px solid var(--line-2) }
-.drawer > summary { list-style: none; cursor: pointer; padding: 9px 2px; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; user-select: none }
+.drawer > summary { list-style: none; cursor: pointer; padding: 9px 2px; font-size: 13px; font-weight: 500; color: var(--ink); display: flex; align-items: center; gap: 8px; user-select: none; border-radius: 4px }
+.drawer > summary:hover { color: var(--azurite) }
 .drawer > summary::-webkit-details-marker { display: none }
-.drawer > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: .15s; margin: 0 4px 0 2px }
+.drawer > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin: 0 2px 0 4px }
 .drawer[open] > summary::before { transform: rotate(45deg) }
-.drawer > .body { padding: 0 2px 12px 16px }
-.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; display: inline-block; vertical-align: -2px }
+.drawer > .body { padding: 2px 2px 14px 18px }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; display: inline-block; vertical-align: -2px; flex: none }
+.spin.sm { width: 10px; height: 10px; border-width: 1.5px }
 @keyframes spin { to { transform: rotate(360deg) } }
-.skeleton { height: 120px; border-radius: var(--r); background: linear-gradient(90deg, #efeae0 25%, #f6f2ea 37%, #efeae0 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite }
-@keyframes sk { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+.skeleton { height: 120px; border-radius: 4px; background: var(--line-2); animation: sk 1.4s ease-in-out infinite alternate }
+@keyframes sk { to { opacity: .45 } }
+.panel { background: var(--silk); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; display: grid; gap: 10px; max-width: 46em; margin-top: 24px }
+.panel label b { font-weight: 600 }
+.row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap }
+.row-actions .sp { flex: 1 }
+
+/* ---------- media ---------- */
+.well { background: var(--well); border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--well-muted); font-size: 12px; min-width: 0 }
+.well.square { aspect-ratio: 1 }
+.zoom { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in }
+.zoom img { display: block; width: 100%; height: auto; object-fit: contain }
+.zoom:focus-visible { outline: 2px solid #9CC3DD; outline-offset: -4px }
+video, audio { max-width: 100%; display: block }
+.well video { width: 100%; background: #000 }
 
 /* ---------- reviews ---------- */
-.review { margin-bottom: 22px; overflow: hidden }
-.review > header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line-2) }
-.review > header h3 { margin: 0; font: 600 17px/1.3 var(--serif) }
-.review > header .sp { flex: 1 }
-.cands { display: grid; gap: 16px; padding: 18px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) }
-.cands.single { grid-template-columns: minmax(0, 560px) }
-.cands.wide { grid-template-columns: 1fr }
+.rv { padding-bottom: 36px; margin-bottom: 36px; border-bottom: 1px solid var(--line) }
+.rv:last-child { border-bottom: 0; margin-bottom: 0 }
+.rv-head { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 12px }
+.rv-head .kind { align-self: center }
+.rv-head h2 { margin: 0; font: 600 18px/1.35 var(--ui); text-wrap: balance }
+.rv-head .sp { flex: 1 }
+.up { color: var(--ink-2); font-weight: 500; margin-right: .5em }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: start }
+.stage .zoom img { max-height: 74vh }
+.desk { display: flex; flex-direction: column; gap: 16px; min-width: 0 }
+.desk.wide { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 28px; margin-top: 18px; align-items: start }
+.desk .info { display: flex; flex-direction: column; gap: 10px; min-width: 0 }
+.desk .info:empty { display: none }
+.desk .info > .drawers { border-bottom: 1px solid var(--line-2) }
+.desk .act { display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.desk.wide .info:empty + .act { grid-column: 1 / -1; max-width: 720px }
+.note label { display: block; font-weight: 600; margin-bottom: 6px }
+.note-bar { display: flex; gap: 12px; align-items: center; margin-top: 8px }
+.note-bar .hint { flex: 1; min-width: 0 }
+.note.none { font-size: 13px; color: var(--ink-2); padding: 10px 12px; background: var(--line-2); border-radius: 4px }
+.decide { display: flex; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap }
+.decide .sp { flex: 1 }
+.cands { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)) }
 .cand { display: flex; flex-direction: column; gap: 10px; min-width: 0 }
-.media { position: relative; border-radius: 10px; overflow: hidden; background: #ebe6dc; display: flex; align-items: center; justify-content: center }
-.media img { display: block; width: 100%; max-height: 64vh; object-fit: contain; cursor: zoom-in; transition: transform .25s }
-.media:hover img { transform: scale(1.01) }
-.media .tag { position: absolute; left: 10px; top: 10px; background: rgba(27,26,23,.72); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px }
-.cand .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
-.cand .bar .sp { flex: 1 }
-.textbody { white-space: pre-wrap; line-height: 1.85; font-size: 14px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 14px 16px; max-height: 60vh; overflow: auto }
-.clip { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 16px; align-items: start }
-.clip video { width: 100%; border-radius: 10px; background: #000; position: sticky; top: 140px }
-@media (max-width: 1200px) { .clip { grid-template-columns: 1fr } .clip video { position: static } }
-.tl { border: 1px solid var(--line); border-radius: 10px; max-height: 64vh; overflow: auto; background: #fff }
-.tl .cut { padding: 9px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line-2); position: sticky; top: 0; z-index: 1 }
-.tl .cut b { font-weight: 600; margin-right: 6px }
-.tl .cut .shot { color: var(--ink-2); font-size: 12px; margin-top: 2px }
-.tl .sec { display: grid; grid-template-columns: 46px 1fr; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--line-2); cursor: pointer; font-size: 13px; transition: background .15s }
-.tl .sec:hover { background: #fbf8f1 }
-.tl .sec.now { background: var(--gold-soft) }
-.tl .sec .t { color: var(--cinnabar); font-variant-numeric: tabular-nums }
-.tl .line { display: block; color: var(--jade); margin-top: 2px }
-.actions { display: flex; gap: 10px; align-items: center; padding: 12px 18px; border-top: 1px solid var(--line-2); background: var(--panel-2) }
-.actions .sp { flex: 1 }
-.revise { display: none; flex-direction: column; gap: 8px }
-.revise.open { display: flex }
-.revise .hint { font-size: 12px; color: var(--muted) }
-.rvbar { display: flex; gap: 8px; align-items: center }
-.review .note { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 8px }
-.review .note textarea { min-height: 64px }
-.rvbar .sp { flex: 1 }
+.cand-bar { display: flex; align-items: center; gap: 10px }
+.cand-bar .sp { flex: 1 }
+.reading { white-space: pre-wrap; font: 16px/1.95 var(--read); color: var(--ink); background: var(--silk); border: 1px solid var(--line); border-radius: 4px; padding: 20px 26px; max-height: 70vh; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere }
+.reading > div { max-width: 40em }
+.clip { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 16px; align-items: start }
+.clip.solo { grid-template-columns: minmax(0, 1fr) }
+.clip > .well { position: sticky; top: 150px }
+.tl { background: var(--silk); border: 1px solid var(--line); border-radius: 4px; max-height: 70vh; overflow: auto; overscroll-behavior: contain }
+.tl .cut { position: sticky; top: 0; z-index: 1; background: var(--rail); padding: 8px 12px; border-bottom: 1px solid var(--line) }
+.cut-h { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap }
+.cut-h .t { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums }
+.tl .cam { font-size: 12px; color: var(--ink-2); margin-top: 2px }
+.tl .shot { font-size: 13px; margin-top: 2px }
+.tl .sec { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; width: 100%; text-align: left; padding: 6px 12px; border: 0; border-bottom: 1px solid var(--line-2); background: none; font-size: 13px; line-height: 1.65; color: var(--ink) }
+.tl button.sec { cursor: pointer }
+.tl button.sec:hover { background: #fff }
+.tl button.sec:focus-visible { outline-offset: -2px }
+.tl .sec.now { background: var(--gold-soft); box-shadow: inset 3px 0 0 var(--gold) }
+.tl .sec .t { color: var(--azurite); font-weight: 600; font-variant-numeric: tabular-nums }
+.tl .line { display: block; color: var(--malachite); margin-top: 2px }
 table.checks { width: 100%; border-collapse: collapse; font-size: 13px }
-table.checks td { padding: 7px 10px; border-bottom: 1px solid var(--line-2) }
-table.checks td:first-child { color: var(--ink-2); width: 110px }
+table.checks td { padding: 7px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top }
+table.checks td:first-child { color: var(--ink-2); width: 120px }
 
 /* ---------- library ---------- */
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) }
-.grid.wide { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)) }
-.ent { overflow: hidden; display: flex; flex-direction: column }
-.ent .cover { background: #ebe6dc; display: flex; align-items: center; justify-content: center; aspect-ratio: 3 / 4; overflow: hidden }
-.grid.wide .ent .cover { aspect-ratio: 16 / 9 }
-.ent .cover img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in }
-.ent .cover .none { color: var(--muted); font-size: 12px }
-.ent .body { padding: 12px 14px 6px; display: flex; flex-direction: column; gap: 8px }
-.ent .name { display: flex; align-items: center; gap: 8px }
-.ent .name b { font: 600 16px/1.3 var(--serif) }
-.thumbs { display: flex; gap: 8px; flex-wrap: wrap }
-.thumb { width: 72px; font-size: 11px; color: var(--muted); text-align: center }
-.thumb img, .thumb .ph { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; background: #ebe6dc; display: block; cursor: zoom-in; border: 1px solid var(--line-2) }
-.thumb .ph { display: flex; align-items: center; justify-content: center; cursor: default }
-.seg { margin-bottom: 18px; overflow: hidden }
-.seg > header { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line-2); flex-wrap: wrap }
-.seg > header h3 { margin: 0; font: 600 16px/1.3 var(--serif) }
-.seg > header .sum { color: var(--ink-2); font-size: 13px; flex-basis: 100% }
-.seg > .body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 16px; padding: 16px 18px }
-@media (max-width: 1200px) { .seg > .body { grid-template-columns: 1fr } }
-.kfs { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; align-content: start }
-.kf { font-size: 12px; color: var(--ink-2) }
-.kf .img { aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #ebe6dc; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; margin-bottom: 4px; text-align: center; padding: 2px }
-.kf .img img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in }
-video, audio { max-width: 100% }
+.ent { display: grid; grid-template-columns: var(--cover) minmax(0, 1fr); gap: 28px; padding: 26px 0; border-bottom: 1px solid var(--line); align-items: start }
+.ent:first-child { padding-top: 0 }
+.ent:last-child { border-bottom: 0 }
+.ents.characters { --cover: 300px } .ents.locations { --cover: 520px } .ents.props { --cover: 420px }
+.cover.tall { aspect-ratio: 2 / 3 } .cover.wide { aspect-ratio: 16 / 9 }
+.cover .zoom, .cover .zoom img { height: 100% }
+.ent-body { min-width: 0 }
+.ent-body h2 { margin: 0 0 12px; font: 600 18px/1.35 var(--ui); display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.thumbs { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px }
+.thumb { margin: 0; width: 220px; min-width: 0 }
+.thumb.square { width: 124px }
+.thumb .well { aspect-ratio: 16 / 9 }
+.thumb.square .well { aspect-ratio: 1 }
+.thumb .zoom, .thumb .zoom img { height: 100% }
+.thumb figcaption { font-size: 12px; color: var(--ink-2); margin-top: 4px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+.thumb figcaption small { flex-basis: 100%; font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.revise { display: none; flex-direction: column; gap: 8px; margin-top: 8px; max-width: 46em }
+.revise.open { display: flex }
+.lib-act { padding: 8px 0 4px }
+.seg { padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid var(--line) }
+.seg:last-child { border-bottom: 0 }
+.seg > header { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin-bottom: 14px }
+.seg > header h2 { margin: 0; font: 600 18px/1.35 var(--ui) }
+.seg > header .sum { flex-basis: 100%; color: var(--ink-2); font-size: 14px; max-width: 50em }
+.seg > .body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 460px); gap: 20px }
+.kfs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; align-content: start }
+.kf { font-size: 12px; color: var(--ink-2); min-width: 0 }
+.kf .well { aspect-ratio: 16 / 9; margin-bottom: 4px; text-align: center; padding: 2px }
+.kf .well:has(.zoom) { padding: 0 }
+.kf .zoom, .kf .zoom img { height: 100% }
+.kf .zoom img { object-fit: cover }
+.kf .cap { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+.kf .cap .t { font-variant-numeric: tabular-nums }
+.clips { display: grid; gap: 28px; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)) }
+.clips.voices { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) }
+.clipbox { display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.clipbox h3 { margin: 0; font: 600 15px/1.4 var(--ui); display: flex; gap: 8px; align-items: center }
+.clipbox audio { width: 100% }
 
 /* ---------- script ---------- */
-.screenplay { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start }
-@media (max-width: 1200px) { .screenplay { grid-template-columns: 1fr } }
-.page { padding: 26px 34px; font-size: 15px; line-height: 1.95 }
-.page .h { font: 600 15px/1.6 var(--serif); margin: 22px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line-2); letter-spacing: .5px }
+.screenplay { display: grid; grid-template-columns: minmax(0, 46em) minmax(240px, 340px); gap: 40px; align-items: start }
+.page { background: var(--silk); border: 1px solid var(--line); border-radius: 4px; padding: 36px 44px; font: 16px/1.95 var(--read); color: var(--ink); overflow-wrap: anywhere }
+.page .h { font: 600 15px/1.6 var(--ui); color: var(--azurite); margin: 30px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: baseline }
 .page .h:first-child { margin-top: 0 }
-.page .set { color: var(--ink-2); font-size: 14px; background: var(--panel-2); border-left: 3px solid #d9cdb4; padding: 6px 12px; margin: 6px 0 10px; border-radius: 0 6px 6px 0 }
-.page .act { color: var(--ink-2) }
+.page .h .sid { color: var(--ink-2); font-weight: 500; font-size: 13px }
+.page .set { color: var(--ink-2); font-size: 15px; border-left: 2px solid var(--line); padding: 2px 0 2px 12px; margin: 6px 0 12px }
 .page .say { padding-left: 2em }
-.page .say b { font-weight: 600; color: var(--jade) }
-.page .vo b { color: var(--indigo) }
-.page .chg { font-size: 13px; color: #8a6420; padding-left: 2em }
-.page .chg::before { content: "变化 "; font-size: 11px; background: var(--gold-soft); border: 1px solid #ecdfc3; border-radius: 4px; padding: 0 4px; margin-right: 6px }
-.page .beat { display: grid; grid-template-columns: 54px 1fr; gap: 6px; padding: 6px 0; border-top: 1px dashed var(--line-2) }
-.page .beat:first-of-type { border-top: 0 }
-.page .beat .id { color: var(--muted); font-size: 12px; padding-top: 4px }
-.aside { padding: 14px 16px; position: sticky; top: 150px; max-height: calc(100vh - 170px); overflow: auto }
-.aside h4 { margin: 0 0 8px; font: 600 14px/1.4 var(--serif) }
-.people { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px }
-.people div { font-size: 13px }
+.page .say b { font: 600 14px/1 var(--ui); color: var(--malachite) }
+.page .vo b { color: var(--azurite) }
+.page .chg { font: 13px/1.7 var(--ui); color: var(--gold-ink); padding-left: 2em }
+.page .chg::before { content: "变化"; font-size: 11px; background: var(--gold-soft); border-radius: 3px; padding: 1px 5px; margin-right: 6px }
+.page .beat { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px dashed var(--line) }
+.page .h + .beat, .page .set + .beat { border-top: 0 }
+.page .beat .id { font: 12px/1.5 var(--ui); color: var(--ink-2); padding-top: 7px; font-variant-numeric: tabular-nums }
+.aside { position: sticky; top: 150px; max-height: calc(100vh - 170px); overflow: auto; overscroll-behavior: contain; border-left: 1px solid var(--line); padding: 2px 0 2px 22px; font-size: 13px }
+.aside h2 { margin: 0 0 10px; font: 600 14px/1.4 var(--ui) }
+.people { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px }
+.people b { font-weight: 600; margin-right: 6px }
+.people .tag { margin-left: 6px }
+.aside dl { margin: 0 0 14px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px }
+.aside dt { color: var(--ink-2) }
+.aside dd { margin: 0 }
+.stat { display: flex; gap: 16px; margin-bottom: 14px; color: var(--ink-2) }
+.stat b { color: var(--ink); font-size: 16px; font-variant-numeric: tabular-nums; margin-right: 2px }
 
 /* ---------- story ---------- */
-.hero { padding: 28px 30px; display: flex; flex-direction: column; gap: 14px; background: linear-gradient(135deg, #fffdf9, #f8f3e8) }
-.hero h2 { margin: 0; font: 600 20px/1.4 var(--serif) }
-.hero textarea { min-height: 96px; font-size: 16px; line-height: 1.7 }
-.steps { display: flex; gap: 0; margin: 6px 0 22px; flex-wrap: wrap }
-.steps .s { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; padding-right: 14px }
-.steps .s::after { content: ""; width: 26px; height: 1px; background: var(--line); margin-left: 6px }
-.steps .s:last-child::after { display: none }
-.steps .s i { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 11px; background: var(--panel) }
-.steps .s.done { color: var(--jade) } .steps .s.done i { background: var(--jade); border-color: var(--jade); color: #fff }
-.steps .s.now { color: var(--cinnabar); font-weight: 500 } .steps .s.now i { border-color: var(--cinnabar); color: var(--cinnabar) }
-.dirs { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px }
-.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; transition: .15s }
-.dir:hover { border-color: #d8ccb2; transform: translateY(-1px) }
-.dir h3 { margin: 0; font: 600 17px/1.45 var(--serif) }
-.dir .num { font: 600 12px/1 var(--sans); color: var(--cinnabar); letter-spacing: 2px }
-.dir .f { font-size: 13px; color: var(--ink-2) }
-.dir .f b { display: block; font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: 1px; margin-bottom: 1px }
-.dir .logline { font-size: 14px; color: var(--ink) }
-.stories { display: flex; flex-direction: column; gap: 8px }
-.story-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; transition: .15s }
-.story-row:hover { border-color: #d8ccb2 }
-.story-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.working { display: flex; align-items: center; gap: 12px; padding: 22px; color: var(--ink-2) }
-.live { padding: 0; overflow: hidden }
-.live .head { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line-2) }
+.compose { max-width: 820px; display: grid; gap: 14px; padding-bottom: 32px }
+.compose h2 { margin: 0; font: 600 22px/1.4 var(--ui) }
+.compose p { margin: 0; color: var(--ink-2); max-width: 40em }
+.compose textarea { min-height: 120px; font: 17px/1.8 var(--read) }
+.stories { border-top: 1px solid var(--line); max-width: 960px }
+.story-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none }
+.story-row:hover { background: rgba(255, 255, 255, .65) }
+.story-row .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500 }
+.back { margin-bottom: 12px }
+.steps { display: flex; flex-wrap: wrap; list-style: none; margin: 0 0 26px; padding: 0; gap: 6px 0 }
+.steps li { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; padding-right: 12px }
+.steps li::after { content: ""; width: 24px; height: 1px; background: var(--line); margin-left: 4px }
+.steps li:last-child::after { display: none }
+.steps li i { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #B6C0C3; display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 11px; background: var(--silk); font-variant-numeric: tabular-nums }
+.steps li.done { color: var(--malachite) }
+.steps li.done i { background: var(--malachite); border-color: var(--malachite); color: #fff }
+.steps li.now { color: var(--azurite); font-weight: 600 }
+.steps li.now i { border-color: var(--azurite); color: var(--azurite) }
+.dirs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px }
+.dir { border-top: 3px solid var(--azurite); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0 }
+.dir .num { font-size: 12px; font-weight: 600; color: var(--azurite) }
+.dir h3 { margin: 0; font: 600 18px/1.45 var(--ui); text-wrap: balance }
+.dir .logline { margin: 0; font: 15px/1.85 var(--read) }
+.dir dl { margin: 0 }
+.dir dt { font-size: 12px; color: var(--ink-2); margin-top: 6px }
+.dir dd { margin: 0; font-size: 14px; line-height: 1.7 }
+.dir .btn { align-self: flex-start; margin-top: 6px }
+.working { display: flex; align-items: center; gap: 12px; padding: 20px 0; color: var(--ink-2) }
+.live .head { display: flex; align-items: center; gap: 10px; padding: 0 0 12px; color: var(--ink-2) }
+.live .head b { color: var(--ink); font-weight: 600 }
 .live .head .sp { flex: 1 }
-.live .page { max-height: 62vh; overflow: auto }
+.live .page { max-height: 62vh; overflow: auto; overscroll-behavior: contain }
 .live .page pre { white-space: pre-wrap; font: inherit; margin: 0 }
-.live .wait { color: var(--muted) }
-.caret { display: inline-block; width: 2px; height: 1em; background: var(--cinnabar); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(1) infinite }
+.live .wait { color: var(--ink-2); font-family: var(--ui); font-size: 14px }
+.caret { display: inline-block; width: 2px; height: 1em; background: var(--azurite); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(1) infinite }
 @keyframes blink { 50% { opacity: 0 } }
-.done-parts { margin-top: 16px; padding: 6px 18px }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none } }
+.done-parts { margin-top: 20px; max-width: 46em }
 
 /* ---------- progress ---------- */
-.nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px }
-.node { padding: 14px 16px }
-.node h4 { margin: 0 0 10px; font: 600 15px/1.4 var(--serif); display: flex; align-items: center; gap: 8px }
+.pstat { display: flex; flex-wrap: wrap; gap: 12px 36px; margin-bottom: 22px }
+.pstat div { color: var(--ink-2); font-size: 13px }
+.pstat b { display: block; font-size: 24px; line-height: 1.2; color: var(--ink); font-variant-numeric: tabular-nums }
+.pstat .red b { color: var(--bad) } .pstat .gold b { color: var(--gold-ink) } .pstat .blue b { color: var(--azurite) }
+.nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 36px }
+.node { padding: 14px 0 16px; border-top: 1px solid var(--line); min-width: 0 }
+.node h2 { margin: 0 0 10px; font: 600 15px/1.4 var(--ui); display: flex; align-items: center; gap: 8px }
+.node h2 .meta { margin-left: auto }
 .chips { display: flex; flex-wrap: wrap; gap: 6px }
-.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--muted) }
-.chip.done { background: var(--jade-soft); color: var(--jade); border-color: #cfe3d9 }
-.chip.review { background: var(--gold-soft); color: #7a5b22; border-color: #ecdfc3 }
-.chip.running, .chip.queued { background: var(--indigo-soft); color: var(--indigo); border-color: #d6dbee }
-.chip.failed { background: var(--bad-soft); color: var(--bad); border-color: #f2cfca }
-.fail { margin-top: 10px; display: flex; flex-direction: column; gap: 8px }
+.chip { font-size: 12px; padding: 1px 8px; border-radius: 3px; background: var(--line-2); color: var(--ink-2) }
+.chip em { font-style: normal; margin-left: 5px; font-weight: 600 }
+.chip.done { background: var(--malachite-soft); color: var(--malachite) }
+.chip.review { background: var(--gold-soft); color: var(--gold-ink) }
+.chip.running, .chip.queued { background: var(--azurite-soft); color: var(--azurite) }
+.chip.failed { background: var(--bad-soft); color: var(--bad) }
+.fail { display: flex; flex-direction: column; gap: 8px; max-width: 980px }
 
 /* ---------- overlays ---------- */
-.dock { position: fixed; right: 26px; bottom: 22px; z-index: 6; width: 360px; padding: 14px 16px; display: none; flex-direction: column; gap: 10px; border-color: #e2d6bd; box-shadow: 0 10px 36px rgba(29,27,24,.16) }
+.dock { position: fixed; right: calc(24px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 6; width: 360px; max-width: calc(100vw - 32px); display: none; flex-direction: column; gap: 10px; padding: 14px 16px; background: var(--silk); border: 1px solid var(--gold); border-top-width: 4px; border-radius: 8px; box-shadow: 0 12px 32px rgba(30, 38, 41, .18) }
 .dock.show { display: flex }
-.dock h4 { margin: 0; font: 600 14px/1.4 var(--serif); display: flex; align-items: center; gap: 8px }
-.dock .what { font-size: 12px; color: var(--ink-2); max-height: 72px; overflow: auto }
-.dock .btn { justify-content: center }
-.toasts { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none }
-.toast { background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 999px; box-shadow: 0 8px 26px rgba(0,0,0,.2); font-size: 13px; animation: pop .2s ease; max-width: 640px }
-.toast.err { background: var(--bad); border-radius: 12px }
+.dock-h { display: flex; align-items: center; gap: 8px }
+.dock-h h2 { margin: 0; font: 600 14px/1.4 var(--ui); display: flex; gap: 8px; align-items: center; flex: 1; color: var(--gold-ink) }
+.dock .what { font-size: 12px; color: var(--ink-2); max-height: 72px; overflow: auto; overscroll-behavior: contain }
+.dock .grant { width: 100% }
+.dock.fold { width: auto; padding: 8px 10px 8px 14px }
+.toasts { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none }
+.toast { background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 8px; box-shadow: 0 8px 26px rgba(0, 0, 0, .2); font-size: 13px; animation: pop .2s ease; max-width: min(640px, 90vw) }
+.toast.err { background: var(--bad) }
 @keyframes pop { from { opacity: 0; transform: translateY(-6px) } }
-.modal { position: fixed; inset: 0; background: rgba(27,26,23,.42); display: none; align-items: center; justify-content: center; z-index: 30; backdrop-filter: blur(2px) }
+.modal { position: fixed; inset: 0; background: rgba(27, 33, 37, .45); display: none; align-items: center; justify-content: center; z-index: 30; overscroll-behavior: contain; padding: 16px }
 .modal.show { display: flex }
-.modal .box { width: 440px; max-width: 92vw; padding: 22px 24px; animation: pop .2s ease }
-.modal h3 { margin: 0 0 8px; font: 600 17px/1.4 var(--serif) }
-.modal p { margin: 0 0 18px; color: var(--ink-2); white-space: pre-wrap; max-height: 40vh; overflow: auto; font-size: 13px }
+.modal .box { width: 460px; max-width: 100%; padding: 22px 24px; background: var(--silk); border-radius: 10px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); animation: pop .2s ease }
+.modal h2 { margin: 0 0 8px; font: 600 17px/1.4 var(--ui) }
+.modal p { margin: 0 0 18px; color: var(--ink-2); white-space: pre-wrap; max-height: 40vh; overflow: auto; overscroll-behavior: contain; font-size: 13px; overflow-wrap: anywhere }
 .modal .row { display: flex; justify-content: flex-end; gap: 10px }
-.lightbox { position: fixed; inset: 0; background: rgba(18,17,15,.92); display: none; align-items: center; justify-content: center; z-index: 40 }
+.lightbox { position: fixed; inset: 0; background: rgba(14, 18, 20, .95); display: none; align-items: center; justify-content: center; z-index: 40; overscroll-behavior: contain }
 .lightbox.show { display: flex }
-.lightbox img { max-width: 92vw; max-height: 90vh; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,.5) }
-.lightbox .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 50%; border: 0; background: rgba(255,255,255,.12); color: #fff; font-size: 22px; cursor: pointer }
-.lightbox .nav-btn:hover { background: rgba(255,255,255,.22) }
+.lightbox figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px }
+.lightbox img { max-width: 90vw; max-height: 86vh; border-radius: 4px }
+.lightbox figcaption { color: #C8D0D3; font-size: 13px; display: flex; gap: 14px }
+.lightbox figcaption span:last-child { font-variant-numeric: tabular-nums; color: var(--well-muted) }
+.lightbox button { position: absolute; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .1); color: #fff; cursor: pointer }
+.lightbox button:hover { background: rgba(255, 255, 255, .24) }
+.lightbox button:focus-visible { outline-color: #9CC3DD }
+.lightbox button svg.i { width: 22px; height: 22px }
+.lightbox .nav-btn { top: 50%; transform: translateY(-50%); width: 48px; height: 48px }
 .lightbox .prev { left: 24px } .lightbox .next { right: 24px }
-.lightbox .close { position: absolute; top: 18px; right: 22px; color: #fff; background: none; border: 0; font-size: 26px; cursor: pointer; opacity: .8 }
-.lightbox .count { position: absolute; bottom: 18px; color: #ccc; font-size: 12px }
+.lightbox .close { top: 18px; right: 22px; width: 42px; height: 42px }
+.lightbox.one .nav-btn { display: none }
+
+/* ---------- narrow ---------- */
+@media (max-width: 1280px) { .top { grid-template-columns: minmax(0, 1fr) } }
+@media (max-width: 1180px) {
+  .split, .desk.wide, .clip, .screenplay, .seg > .body { grid-template-columns: minmax(0, 1fr) }
+  .desk.wide .info:empty + .act { max-width: none }
+  .clip > .well, .aside { position: static; max-height: none }
+  .aside { border-left: 0; padding: 18px 0 0; border-top: 1px solid var(--line) }
+  .ent { grid-template-columns: minmax(0, 1fr) }
+  .ents .cover { max-width: min(100%, var(--cover)) }
+  .page { padding: 26px 24px }
+}
+@media (max-width: 820px) {
+  .app { grid-template-columns: minmax(0, 1fr) }
+  .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 12px 12px 10px; gap: 10px }
+  .engine { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) }
+  .engine select { grid-column: 1 / -1 }
+  .ledger { grid-column: 1 / -1 }
+  .nav { display: flex; flex-wrap: wrap; gap: 4px }
+  .nav .grp { display: none }
+  .nav .item { padding: 6px 10px; background: rgba(255, 255, 255, .5) }
+  .top { position: static; padding: 12px 16px }
+  .phases { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  main { padding: 18px 16px 220px }
+  html { scroll-padding-top: 16px }
+  .page { padding: 20px 16px }
+  .story-row { grid-template-columns: minmax(0, 1fr) auto }
+  .story-row .meta { display: none }
+  .dock { left: 16px; right: 16px; width: auto; bottom: calc(12px + env(safe-area-inset-bottom)) }
+  .lightbox .prev { left: 8px } .lightbox .next { right: 8px }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important }
+}
 </style>
 </head>
 <body>
+<a class="skip" href="#view">跳到正文</a>
 <div class="app">
-  <aside class="side">
-    <div class="brand"><b>言象</b><span>漫剧工坊</span></div>
-    <div class="proj">
-      <select id="proj" title="切换项目"></select>
-      <div class="row2"><button class="run" id="run"></button><span class="gpu"><span class="dot" id="gpudot"></span><span id="gputext">GPU</span></span></div>
-      <div class="spent" id="spent"></div>
+  <aside class="side" aria-label="导航与引擎状态">
+    <div class="brand" translate="no"><b>言象</b><span>漫剧制作台</span></div>
+    <div class="engine">
+      <label class="vh" for="proj">当前项目</label>
+      <select id="proj" name="project" autocomplete="off"></select>
+      <div class="state"><span class="dot" id="rundot"></span><span id="runtext">…</span><span class="sp"></span><button type="button" class="btn sm" id="run">…</button></div>
+      <div class="state"><span class="dot" id="gpudot"></span><span id="gputext">GPU</span></div>
+      <dl class="ledger"><dt>已花</dt><dd id="spent">—</dd><dt>已出片</dt><dd id="videos">—</dd></dl>
     </div>
-    <nav class="nav" id="nav"></nav>
+    <nav class="nav" id="nav" aria-label="页面"></nav>
   </aside>
   <div class="mainwrap">
-    <div class="top"><h1 id="title">言象</h1><div class="sub" id="subtitle"></div><div class="phases" id="phases"></div></div>
-    <main id="view"><div class="skeleton"></div></main>
+    <header class="top"><div><h1 id="title">言象</h1><div class="sub" id="subtitle"></div></div><div class="phases" id="phases" role="group" aria-label="四个阶段的进度"></div></header>
+    <main id="view" tabindex="-1"><div class="skeleton"></div></main>
   </div>
 </div>
-<div class="card dock" id="dock"></div>
-<div class="toasts" id="toasts"></div>
-<div class="modal" id="modal"><div class="card box"><h3 id="mtitle"></h3><p id="mbody"></p><div class="row"><button class="btn" id="mno">取消</button><button class="btn accent" id="myes">确定</button></div></div></div>
-<div class="lightbox" id="lb"><button class="close" onclick="closeLb()">×</button><button class="nav-btn prev" onclick="stepLb(-1)">‹</button><img id="lbimg"><button class="nav-btn next" onclick="stepLb(1)">›</button><div class="count" id="lbcount"></div></div>
+<aside class="dock" id="dock" aria-label="等你授权"></aside>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="modal" id="modal"><div class="box" role="dialog" aria-modal="true" aria-labelledby="mtitle" aria-describedby="mbody"><h2 id="mtitle"></h2><p id="mbody"></p><div class="row"><button type="button" class="btn" id="mno">取消</button><button type="button" class="btn primary" id="myes">确定</button></div></div></div>
+<div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="看大图">
+  <button type="button" class="close" id="lbclose" onclick="closeLb()" aria-label="关闭大图（Esc）"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  <button type="button" class="nav-btn prev" onclick="stepLb(-1)" aria-label="上一张（←）"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <figure><img id="lbimg" alt=""><figcaption><span id="lbcap"></span><span id="lbcount"></span></figcaption></figure>
+  <button type="button" class="nav-btn next" onclick="stepLb(1)" aria-label="下一张（→）"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+</div>
 <script>
 const $ = s => document.querySelector(s)
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
@@ -304,80 +435,155 @@ const ICON = {
   check: '<path d="m5 12 5 5 9-10"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>', redo: '<path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.3 5.7"/>',
   inbox: '<path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v6H3v-6Z"/>', alert: '<path d="M12 3 2 20h20Z"/><path d="M12 10v4M12 17v.5"/>',
   back: '<path d="M15 6l-6 6 6 6"/>', sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5"/>',
+  down: '<path d="m6 9 6 6 6-6"/>', up: '<path d="m6 15 6-6 6 6"/>',
 }
-const icon = n => '<svg class="i" viewBox="0 0 24 24">' + ICON[n] + '</svg>'
+const icon = n => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + ICON[n] + '</svg>'
 
 let S = null, L = null, PROJ = null, STORIES = [], ST = null, SID = null
-let tab = localStorage.getItem('yx.tab') || null
+let tab = null
 let lastKey = '', lastTab = null
+let dockFold = localStorage.getItem('yx.dock') === 'fold'
 
 // ---------- helpers ----------
+const money = d => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: 2, maximumFractionDigits: d })
+const USD3 = money(3), USD4 = money(4)
+const usd = n => USD3.format(n)
+const WHEN = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+// Story ids are the UTC time they were started (storyflow.ts), yyyymmddhhmmss.
+const storyTime = id => { const m = /^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)$/.exec(id); return m ? WHEN.format(new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]))) : '' }
 function toast(text, err) {
   const d = document.createElement('div'); d.className = 'toast' + (err ? ' err' : ''); d.textContent = text
+  if (err) d.setAttribute('role', 'alert')
   $('#toasts').append(d); setTimeout(() => d.remove(), err ? 6000 : 2400)
 }
-function ask(title, body, ok = '确定') {
+// While an overlay is open the page behind it takes no focus or clicks; focus goes back where it was.
+let returnFocus = null
+function hold(on) {
+  for (const el of [$('.app'), $('#dock')]) el.inert = on
+  if (on) returnFocus = document.activeElement
+  else if (returnFocus && returnFocus.isConnected) returnFocus.focus({ preventScroll: true })
+}
+function ask(title, body, ok = '确定', tone = 'primary') {
   return new Promise(res => {
     $('#mtitle').textContent = title; $('#mbody').textContent = body || ''; $('#myes').textContent = ok
-    const m = $('#modal'); m.classList.add('show')
-    const done = v => { m.classList.remove('show'); $('#myes').onclick = $('#mno').onclick = null; res(v) }
+    $('#myes').className = 'btn ' + tone
+    const m = $('#modal'); m.classList.add('show'); hold(true); $('#mno').focus()
+    const done = v => { m.classList.remove('show'); $('#myes').onclick = $('#mno').onclick = m.onclick = null; hold(false); res(v) }
     $('#myes').onclick = () => done(true); $('#mno').onclick = () => done(false)
     m.onclick = e => { if (e.target === m) done(false) }
   })
 }
+// The button that started a request shows it is busy until the engine answers.
+let clicked = null
+document.addEventListener('click', e => { if (!e.target.closest('#modal')) clicked = e.target.closest('button') }, true)
 async function api(path, data, done) {
+  const btn = clicked; clicked = null
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true') }
   try {
     const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data || {}) })
     const j = await r.json()
     if (j.ok === false || (j.error && !j.id)) { toast(j.error, true); return null }
     if (done) toast(done)
     return j
-  } catch (e) { toast('连不上引擎', true); return null }
+  } catch (e) { toast('连不上引擎：确认 bun src/m1/run.ts 还在跑', true); return null }
+  finally { if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy') } }
 }
-async function act(path, data, done) { const j = await api(path, data, done); lastKey = ''; await Promise.all([loadStatus(), loadProjects(), LIB[tab] ? loadLib() : null]); return j }
+const refresh = () => { lastKey = ''; return Promise.all([loadStatus(), loadProjects(), LIB[tab] ? loadLib() : null]) }
+async function act(path, data, done) { const j = await api(path, data, done); await refresh(); return j }
 const decide = (review, data, done) => act('/api/reviews/' + review + '/decision', data, done)
-const go = t => { tab = t; localStorage.setItem('yx.tab', t); if (LIB[t]) { L = null; loadLib() } if (t === 'story') loadStories(); lastKey = ''; render(); window.scrollTo(0, 0) }
-
-function scopeName(scope) {
-  const p = String(scope).split('/')
-  if (p[1] === 'char' || p[1] === 'prop' || p[1] === 'loc') return p.slice(2).join(' · ')
-  if (p.length === 3 && p[2].startsWith('c')) return '第 ' + p[1].slice(1) + ' 段 · 第 ' + p[2].slice(1) + ' 镜'
-  if (p.length === 2 && p[1].startsWith('g')) return '第 ' + p[1].slice(1) + ' 段'
-  return scope === 'e1' ? '第 1 集' : scope
+// An empty required note is marked where it is, with the message under it.
+function needText(el, msg) {
+  const v = el.value.trim()
+  if (v) return v
+  const id = el.id + '-err'
+  el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-errormessage', id)
+  if (!document.getElementById(id)) el.insertAdjacentHTML('afterend', '<div class="field-err" id="' + id + '" role="alert">' + esc(msg) + '</div>')
+  el.focus(); return ''
 }
+// What the creator has typed survives re-renders, switching pages and reloads, until it is sent.
+const DRAFTS = JSON.parse(sessionStorage.getItem('yx.drafts') || '{}')
+const saveDrafts = () => sessionStorage.setItem('yx.drafts', JSON.stringify(DRAFTS))
+function clearDraft(el) { el.value = ''; delete DRAFTS[el.dataset.keep]; saveDrafts() }
+document.addEventListener('input', e => {
+  const t = e.target
+  if (t.dataset && t.dataset.keep) { if (t.value) DRAFTS[t.dataset.keep] = t.value; else delete DRAFTS[t.dataset.keep]; saveDrafts() }
+  if (t.value && t.getAttribute('aria-invalid')) { t.removeAttribute('aria-invalid'); const m = document.getElementById(t.id + '-err'); if (m) m.remove() }
+})
+window.addEventListener('beforeunload', e => { if (Object.values(DRAFTS).some(v => v.trim())) { e.preventDefault(); e.returnValue = '' } })
+
+function scopeParts(scope) {
+  const p = String(scope).split('/')
+  if (p[1] === 'char' || p[1] === 'prop' || p[1] === 'loc') return p.slice(2)
+  if (p.length === 3 && p[2].startsWith('c')) return ['第\u00a0' + p[1].slice(1) + '\u00a0段', '第\u00a0' + p[2].slice(1) + '\u00a0镜']
+  if (p.length === 2 && p[1].startsWith('g')) return ['第\u00a0' + p[1].slice(1) + '\u00a0段']
+  return [scope === 'e1' ? '第\u00a01\u00a0集' : String(scope)]
+}
+const scopeName = scope => scopeParts(scope).join(' ')
+const scopeHtml = scope => { const p = scopeParts(scope); return p.length > 1 ? '<span class="up">' + esc(p.slice(0, -1).join(' ')) + '</span>' + esc(p[p.length - 1]) : esc(p[0]) }
 const KIND = { entity_brief: '外观设计', entity_image: '设定图', keyframe: '关键帧', audition: '试音', clip_draft: '草稿', cut_draft: '整集草稿', cut_final: '交付片' }
+function kindLabel(kind, scope) {
+  const p = String(scope).split('/')
+  if (kind === 'entity_image' && p.length === 4) return p[1] === 'loc' ? '机位图' : p[3]
+  return KIND[kind] || kind
+}
 const media = id => '/api/media/' + id
 
 // ---------- lightbox ----------
-let LB = [], LBI = 0
-function zoom(el) {
-  LB = [...document.querySelectorAll('img[data-zoom]')].map(x => x.src); LBI = Math.max(0, LB.indexOf(el.src))
-  showLb()
+// Pictures come in three shapes (1672×941 views and keyframes, 1024×1536 portraits, 1254×1254 close-ups);
+// the size only reserves room before the picture loads, its own proportions win after.
+const DIM = { wide: [1672, 941], tall: [1024, 1536], square: [1254, 1254] }
+function shapeOf(scope) {
+  const p = String(scope).split('/')
+  if (p[1] !== 'char') return 'wide'
+  if (p.length === 3) return 'tall'
+  return p[3].includes('特写') ? 'square' : 'wide'
 }
-function showLb() { $('#lbimg').src = LB[LBI]; $('#lbcount').textContent = (LBI + 1) + ' / ' + LB.length; $('#lb').classList.add('show') }
+const zimg = (id, alt, shape, eager) => {
+  const [w, h] = DIM[shape || 'wide']
+  return '<button type="button" class="zoom" onclick="zoom(this)" aria-label="放大看：' + esc(alt) + '"><img data-zoom src="' + media(id) + '" alt="' + esc(alt) + '" width="' + w + '" height="' + h + '" decoding="async"' + (eager ? ' fetchpriority="high"' : ' loading="lazy"') + '></button>'
+}
+let LB = [], LBI = 0
+function zoom(btn) {
+  const img = btn.querySelector('img')
+  LB = [...document.querySelectorAll('#view img[data-zoom]')]; LBI = Math.max(0, LB.indexOf(img))
+  if (!$('#lb').classList.contains('show')) { $('#lb').classList.add('show'); hold(true) }
+  showLb(); $('#lbclose').focus()
+}
+function showLb() {
+  const img = LB[LBI]
+  $('#lbimg').src = img.src; $('#lbimg').alt = img.alt; $('#lbcap').textContent = img.alt
+  $('#lbcount').textContent = (LBI + 1) + ' / ' + LB.length
+  $('#lb').classList.toggle('one', LB.length < 2)
+}
 function stepLb(d) { if (!LB.length) return; LBI = (LBI + d + LB.length) % LB.length; showLb() }
-function closeLb() { $('#lb').classList.remove('show') }
-$('#lb').addEventListener('click', e => { if (e.target.id === 'lb') closeLb() })
+function closeLb() { if (!$('#lb').classList.contains('show')) return; $('#lb').classList.remove('show'); hold(false) }
+$('#lb').addEventListener('click', e => { if (e.target.id === 'lb' || e.target.tagName === 'FIGURE') closeLb() })
 document.addEventListener('keydown', e => {
-  if ($('#lb').classList.contains('show')) { if (e.key === 'Escape') closeLb(); if (e.key === 'ArrowLeft') stepLb(-1); if (e.key === 'ArrowRight') stepLb(1) }
-  else if (e.key === 'Escape' && $('#modal').classList.contains('show')) $('#mno').click()
+  if ($('#lb').classList.contains('show')) {
+    if (e.key === 'Escape') closeLb()
+    else if (e.key === 'ArrowLeft') stepLb(-1)
+    else if (e.key === 'ArrowRight') stepLb(1)
+  } else if (e.key === 'Escape' && $('#modal').classList.contains('show')) $('#mno').click()
 })
-const zimg = (id, cls) => '<img data-zoom class="' + (cls || '') + '" src="' + media(id) + '" loading="lazy" onclick="zoom(this)">'
 
 // ---------- timeline ----------
-function tlTable(t, id) {
+function tlTable(t, id, playable) {
   if (!t) return ''
   let rows = ''
   for (const c of t.cuts) {
-    rows += '<div class="cut"><b>第 ' + c.index + ' 镜</b><span class="muted small">' + c.start + '–' + c.end + ' 秒 · ' + esc(c.camera) + '</span>' +
-      (c.present && c.present.backs && c.present.backs.length ? ' <span class="badge blue">背影：' + esc(c.present.backs.join('、')) + '</span>' : '') +
-      (c.location ? ' <span class="badge">' + esc(c.location) + '</span>' : '') + '<div class="shot">' + esc(c.shot) + '</div></div>'
+    const tags = (c.present && c.present.backs && c.present.backs.length ? '<span class="tag blue">背影：' + esc(c.present.backs.join('、')) + '</span>' : '') + (c.location ? '<span class="tag">' + esc(c.location) + '</span>' : '')
+    rows += '<div class="cut"><div class="cut-h"><b>第 ' + c.index + ' 镜</b><span class="t">' + c.start + '–' + c.end + ' 秒</span>' + tags + '</div>' +
+      (c.camera ? '<div class="cam">' + esc(c.camera) + '</div>' : '') + '<div class="shot">' + esc(c.shot) + '</div></div>'
     for (const e of t.timeline.filter(e => e.second >= c.start && e.second < c.end)) {
       const lines = t.lines.filter(l => Math.floor(l.start) === e.second).map(l => '<span class="line">' + esc(l.speaker) + '：' + esc(l.text) + '</span>').join('')
-      rows += '<div class="sec" data-v="' + id + '" data-t="' + e.second + '" onclick="seek(\'' + id + '\',' + e.second + ')"><span class="t">' + e.second + 's</span><span>' + esc(e.text) + lines + '</span></div>'
+      const inner = '<span class="t">' + e.second + 's</span><span>' + esc(e.text) + lines + '</span>'
+      rows += playable
+        ? '<button type="button" class="sec" data-t="' + e.second + '" onclick="seek(\'' + id + '\',' + e.second + ')">' + inner + '</button>'
+        : '<div class="sec" data-t="' + e.second + '">' + inner + '</div>'
     }
   }
-  return '<div class="tl" id="tl' + id + '">' + rows + '</div>'
+  return '<div class="tl" id="tl' + id + '"' + (playable ? ' role="group" aria-label="逐秒时间轴，点一行跳到那一秒"' : '') + '>' + rows + '</div>'
 }
 function seek(id, t) { const v = document.getElementById('v' + id); if (v) { v.currentTime = t; v.play() } }
 document.addEventListener('timeupdate', e => {
@@ -391,87 +597,110 @@ document.addEventListener('timeupdate', e => {
 // ---------- reviews ----------
 const reviseHint = a => a.kind === 'entity_image' || a.kind === 'keyframe' ? '会先改描述，再重出图（要再授权）' : a.kind === 'clip_draft' ? '会改这一段的时间轴，关键帧和草稿都会重出' : '会带着这条意见重写'
 function reviseBox(id, onsubmit, hint) {
-  return '<div class="revise" id="rv' + id + '"><textarea id="rt' + id + '" data-keep="rt' + id + '" placeholder="哪里不对、要怎么改"></textarea>' +
-    '<div class="rvbar"><span class="hint">' + esc(hint) + '</span><span class="sp"></span><button class="btn sm ghost" onclick="toggleRv(' + id + ')">收起</button><button class="btn sm accent" onclick="' + onsubmit + '">提交意见</button></div></div>'
+  return '<div class="revise" id="rv' + id + '"><label class="vh" for="rt' + id + '">修改意见</label><textarea id="rt' + id + '" name="revise-' + id + '" data-keep="rt' + esc(S.project) + '/' + id + '" autocomplete="off" aria-describedby="rvh' + id + '" placeholder="哪里不对、要怎么改…"></textarea>' +
+    '<div class="note-bar"><span class="hint" id="rvh' + id + '">' + esc(hint) + '</span><button type="button" class="btn sm quiet" onclick="toggleRv(' + id + ')">收起</button><button type="button" class="btn sm primary" onclick="' + onsubmit + '">' + icon('edit') + '按意见重写</button></div></div>'
 }
-function toggleRv(id) { const el = document.getElementById('rv' + id); el.classList.toggle('open'); if (el.classList.contains('open')) document.getElementById('rt' + id).focus() }
+function toggleRv(id) {
+  const el = document.getElementById('rv' + id), open = el.classList.toggle('open')
+  document.querySelectorAll('[aria-controls="rv' + id + '"]').forEach(b => b.setAttribute('aria-expanded', open))
+  if (open) document.getElementById('rt' + id).focus()
+}
 async function sendCardRevise(review, artifact) {
-  const v = document.getElementById('rc' + review).value.trim()
-  if (!v) return toast('先写意见', true)
-  await decide(review, { action: 'revise', artifact, instruction: v }, '已按意见排队重写')
+  const el = document.getElementById('rc' + review)
+  const v = needText(el, '先在意见框里写哪里要改'); if (!v) return
+  if (await api('/api/reviews/' + review + '/decision', { action: 'revise', artifact, instruction: v }, '已按意见排队重写')) clearDraft(el)
+  await refresh()
 }
-function drawer(title, body, key, badge) {
-  return '<details class="drawer" data-key="' + esc(key) + '"><summary>' + esc(title) + (badge || '') + '</summary><div class="body">' + body + '</div></details>'
+function drawer(title, body, key, badge, open) {
+  return '<details class="drawer" data-key="' + esc(key) + '"' + (open ? ' open' : '') + '><summary>' + esc(title) + (badge || '') + '</summary><div class="body">' + body + '</div></details>'
 }
-function candidate(a, r, many, index) {
+function mediaOf(a, r, eager) {
+  const p = a.payload || {}
+  if (a.media && a.mime && a.mime.startsWith('image/')) return '<div class="well">' + zimg(a.media, scopeName(r.scope) + ' ' + kindLabel(a.kind, r.scope) + '，第 ' + a.version + ' 版', shapeOf(r.scope), eager) + '</div>'
+  if (a.media && a.mime === 'video/mp4') return '<div class="clip' + (a.timeline ? '' : ' solo') + '"><div class="well"><video id="v' + a.id + '" controls preload="metadata" src="' + media(a.media) + '"></video></div>' + (a.timeline ? tlTable(a.timeline, a.id, true) : '') + '</div>'
+  if (a.media && a.mime && a.mime.startsWith('audio/')) return '<audio controls src="' + media(a.media) + '"></audio>'
+  if (p.text && !a.media) return '<div class="reading"><div>' + esc(p.text) + '</div></div>'
+  return ''
+}
+function infoOf(a) {
   const p = a.payload || {}
   let h = ''
-  if (a.media && a.mime && a.mime.startsWith('image/')) h += '<div class="media">' + zimg(a.media) + (many ? '<span class="tag">候选 ' + (index + 1) + '</span>' : '') + '</div>'
-  if (a.media && a.mime === 'video/mp4') h += '<div class="clip"><video id="v' + a.id + '" controls preload="metadata" src="' + media(a.media) + '"></video>' + (a.timeline ? tlTable(a.timeline, a.id) : '<div></div>') + '</div>'
-  if (a.media && a.mime && a.mime.startsWith('audio/')) h += '<audio controls src="' + media(a.media) + '"></audio>'
-  if (p.text && !a.media) h += '<div class="textbody">' + esc(p.text) + '</div>'
-  if (p.line) h += '<div class="notice ok">' + icon('sparkle') + '<span>试音台词：「' + esc(p.line) + '」· ' + p.seconds + ' 秒</span></div>'
+  if (p.line) h += '<div class="notice ok">' + icon('sparkle') + '<span>试音台词：「' + esc(p.line) + '」，' + p.seconds + ' 秒</span></div>'
   if (p.dropped && p.dropped.length) h += '<div class="notice">' + icon('alert') + '<span>超过 9 张参考图或 3 段音色的上限，没绑上：' + esc(p.dropped.join('、')) + '</span></div>'
   if (p.unmeasured && p.unmeasured.length) h += '<div class="notice">' + icon('alert') + '<span>这几句没从声音里找到，字幕用的是计划时间：' + esc(p.unmeasured.join(' / ')) + '</span></div>'
   if (p.adjusted && p.adjusted.length) h += '<div class="notice">' + icon('alert') + '<span>这些段的裁剪超出允许范围，被程序收紧过：' + esc(p.adjusted.join('、')) + '</span></div>'
-  if (p.checks) h += '<table class="checks">' + p.checks.map(c => '<tr><td>' + esc(c.check) + '</td><td>' + (c.ok ? '<span class="badge jade">通过</span> ' : '<span class="badge red">不通过</span> ') + esc(c.detail) + '</td></tr>').join('') + '</table><div class="muted small">交付文件夹：' + esc(p.folder) + '</div>'
+  if (p.checks) h += '<table class="checks"><tbody>' + p.checks.map(c => '<tr><td>' + esc(c.check) + '</td><td>' + (c.ok ? '<span class="tag green">通过</span> ' : '<span class="tag red">不通过</span> ') + esc(c.detail) + '</td></tr>').join('') + '</tbody></table><div class="hint">交付文件夹：<span translate="no">' + esc(p.folder) + '</span></div>'
   let drawers = ''
   for (const c of a.context) drawers += drawer(c.title, '<pre>' + esc(c.body) + '</pre>', 'c' + a.id + c.title)
   if (p.prompt) drawers += drawer('提示词', '<pre>' + esc(p.prompt) + '</pre>', 'p' + a.id)
-  h += drawers ? '<div>' + drawers + '</div>' : ''
-  let bar = '<div class="bar"><span class="muted small">第 ' + a.version + ' 版</span><span class="sp"></span>'
-  if (many) bar += '<button class="btn sm primary" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button>'
-  bar += '</div>'
-  h += bar
-  return '<div class="cand">' + h + '</div>'
+  return h + (drawers ? '<div class="drawers">' + drawers + '</div>' : '')
 }
-async function redo(r) { if (await ask('重出一次？', '同样的输入换一个种子再出一次，需要再授权。', '重出')) decide(r, { action: 'redo' }, '已排队重出') }
-function reviewCard(r) {
+async function redo(r) { if (await ask('重出一次？', '同样的输入换一个种子再出一次，要再授权才会真的出。', '重出', 'spend')) decide(r, { action: 'redo' }, '已排队重出') }
+function reviewCard(r, first) {
   const many = r.artifacts.length > 1
-  const kinds = r.artifacts.map(a => a.kind)
-  const video = kinds.some(k => ['clip_draft', 'cut_draft', 'cut_final', 'audition'].includes(k))
-  const text = r.artifacts.every(a => !a.media)
+  const a0 = r.artifacts[0]
+  const video = r.artifacts.some(a => a.mime === 'video/mp4')
   const paid = r.artifacts.some(a => a.media)
   const pickOne = r.point === 5 || r.point === 7
-  let foot = '<span class="muted small">' + (many ? r.artifacts.length + ' 个候选，选一张' : '审核 ' + r.id) + '</span><span class="sp"></span>'
-  if (paid) foot += '<button class="btn" onclick="redo(' + r.id + ')">' + icon('redo') + '重出</button>'
-  if (!many) foot += '<button class="btn primary" onclick="decide(' + r.id + ',{action:\'' + (pickOne ? 'pick' : 'approve') + '\',artifact:' + r.artifacts[0].id + '},\'已通过\')">' + icon('check') + (r.point === 7 ? '采用' : '通过') + '</button>'
   // Candidates of one review come from the same text, so one note per review goes to it.
   const target = r.artifacts.find(a => a.revisable)
   const note = target
-    ? '<div class="note"><textarea id="rc' + r.id + '" data-keep="rc' + r.id + '" placeholder="评审意见：哪里不对、要怎么改"></textarea><div class="rvbar"><span class="hint">' + esc(reviseHint(target)) + '</span><span class="sp"></span><button class="btn accent" onclick="sendCardRevise(' + r.id + ',' + target.id + ')">' + icon('edit') + '按意见重写</button></div></div>'
-    : '<div class="note muted small">这一步没有可改的文字，不满意就点「重出」</div>'
-  return '<article class="card review"><header><span class="badge gold">' + esc(KIND[kinds[0]] || kinds[0]) + '</span><h3>' + esc(scopeName(r.scope)) + '</h3><span class="sp"></span><span class="muted small">' + esc(r.scope) + '</span></header>' +
-    '<div class="cands' + (video || text ? ' wide' : many ? '' : ' single') + '">' + r.artifacts.map((a, i) => candidate(a, r, many, i)).join('') + '</div>' +
-    note + '<div class="actions">' + foot + '</div></article>'
+    ? '<div class="note"><label for="rc' + r.id + '">评审意见</label><textarea id="rc' + r.id + '" name="note-' + r.id + '" data-keep="rc' + esc(S.project) + '/' + r.id + '" autocomplete="off" aria-describedby="rh' + r.id + '" placeholder="哪里不对、要怎么改，例如：石台再旧一些，锁链上要有锈迹…"></textarea>' +
+      '<div class="note-bar"><span class="hint" id="rh' + r.id + '">' + esc(reviseHint(target)) + '</span><button type="button" class="btn primary" onclick="sendCardRevise(' + r.id + ',' + target.id + ')">' + icon('edit') + '按意见重写</button></div></div>'
+    : '<div class="note none">这一步没有可改的文字。不满意就点「重出」，换一个种子再出一次。</div>'
+  let decideBar = paid ? '<button type="button" class="btn" onclick="redo(' + r.id + ')">' + icon('redo') + '重出</button>' : ''
+  decideBar += '<span class="sp"></span>'
+  if (many) decideBar += '<span class="hint">在上面的候选里点「选这张」</span>'
+  else decideBar += '<button type="button" class="btn pass big" onclick="decide(' + r.id + ',{action:\'' + (pickOne ? 'pick' : 'approve') + '\',artifact:' + a0.id + '},\'已通过\')">' + icon('check') + (r.point === 7 ? '采用' : '通过') + '</button>'
+  const desk = (wide, info) => '<div class="desk' + (wide ? ' wide' : '') + '"><div class="info">' + info + '</div><div class="act">' + note + '<div class="decide">' + decideBar + '</div></div></div>'
+  const head = '<header class="rv-head"><span class="tag gold kind">' + esc(kindLabel(a0.kind, r.scope)) + '</span><h2 id="rvh-' + r.id + '">' + scopeHtml(r.scope) + '</h2>' +
+    '<span class="meta">' + (many ? r.artifacts.length + ' 个候选，选一个' : '第 ' + a0.version + ' 版') + '</span><span class="sp"></span>' +
+    '<span class="meta" translate="no">' + esc(r.scope) + '</span><span class="meta">审核 ' + r.id + '</span></header>'
+  let body
+  if (many) {
+    body = '<div class="cands">' + r.artifacts.map((a, i) => '<div class="cand">' + mediaOf(a, r, first) +
+      '<div class="cand-bar"><b>候选 ' + (i + 1) + '</b><span class="meta">第 ' + a.version + ' 版</span><span class="sp"></span><button type="button" class="btn pass" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button></div>' +
+      infoOf(a) + '</div>').join('') + '</div>' + desk(true, '')
+  } else if (video) body = '<div class="stage">' + mediaOf(a0, r, first) + '</div>' + desk(true, infoOf(a0))
+  else body = '<div class="split"><div class="stage">' + mediaOf(a0, r, first) + '</div>' + desk(false, infoOf(a0)) + '</div>'
+  return '<section class="rv" aria-labelledby="rvh-' + r.id + '">' + head + body + '</section>'
 }
 function reviewsPage(point) {
   const list = S.reviews.filter(r => r.point === point)
-  if (!list.length) return emptyState('inbox', '这一项都审完了', '新的待审会自动出现在左侧')
-  return list.map(reviewCard).join('')
+  if (!list.length) return emptyState('inbox', '这一项都审完了', '新的待审会出现在左边「待审」里。', '<a class="btn" href="#progress">看进度</a>')
+  return list.map((r, i) => reviewCard(r, i === 0)).join('')
 }
 
 // ---------- library ----------
 const LIB = { characters: ['人物', 'user'], locations: ['地点', 'pin'], props: ['道具', 'box'], script: ['剧本', 'scroll'], storyboard: ['分镜', 'film'], videos: ['视频', 'play'] }
 const STATUS = { draft: ['待审', 'gold'], stale: ['等重做', 'red'] }
-const st = x => x && STATUS[x.status] ? ' <span class="badge ' + STATUS[x.status][1] + '">' + STATUS[x.status][0] + '</span>' : ''
+const st = x => x && STATUS[x.status] ? ' <span class="tag ' + STATUS[x.status][1] + '">' + STATUS[x.status][0] + '</span>' : ''
 const txt = x => x && x.payload && x.payload.text ? x.payload.text : ''
 function libRevise(x, hint) {
   if (!x) return ''
-  return '<div class="rvbar" style="padding:6px 0 10px"><span class="sp"></span><button class="btn sm" onclick="toggleRv(' + x.id + ')">' + icon('edit') + '提意见</button></div>' + reviseBox(x.id, 'sendLibRevise(' + x.id + ')', hint)
+  return '<div class="lib-act"><button type="button" class="btn sm" onclick="toggleRv(' + x.id + ')" aria-expanded="false" aria-controls="rv' + x.id + '">' + icon('edit') + '提意见</button>' + reviseBox(x.id, 'sendLibRevise(' + x.id + ')', hint) + '</div>'
 }
 async function sendLibRevise(id) {
-  const v = document.getElementById('rt' + id).value.trim()
-  if (!v) return toast('先写意见', true)
-  await act('/api/revise', { artifact: id, instruction: v }, '已按意见排队重写')
+  const el = document.getElementById('rt' + id)
+  const v = needText(el, '先在意见框里写哪里要改'); if (!v) return
+  if (await api('/api/revise', { artifact: id, instruction: v }, '已按意见排队重写')) { clearDraft(el); toggleRv(id) }
+  await refresh()
 }
-function entities(list, wide) {
-  if (!list.length) return emptyState(LIB[tab][1], '还没有', '剧本拆出出场清单后会出现在这里')
-  return '<div class="grid' + (wide ? ' wide' : '') + '">' + list.map(e => '<div class="card ent"><div class="cover">' + (e.image && e.image.media ? zimg(e.image.media) : '<span class="none">还没出图</span>') + '</div>' +
-    '<div class="body"><div class="name"><b>' + esc(e.name) + '</b>' + st(e.image) + '</div>' +
-    (e.extras.length ? '<div class="thumbs">' + e.extras.map(x => '<div class="thumb" title="' + esc(x.note || '') + '">' + (x.image && x.image.media ? zimg(x.image.media) : '<div class="ph">未出</div>') + esc(x.label) + '</div>').join('') + '</div>' : '') +
-    '<div>' + (txt(e.brief) ? drawer('外观要点', '<pre>' + esc(txt(e.brief)) + '</pre>', 'b' + e.scope, st(e.brief)) : '') + (txt(e.desc) ? drawer('定妆描述', '<pre>' + esc(txt(e.desc)) + '</pre>', 'd' + e.scope) : '') + '</div>' +
-    libRevise(e.brief, '改外观设计，描述和图会跟着重来') + '</div></div>').join('') + '</div>'
+function entities(list) {
+  const [label, ic] = LIB[tab]
+  if (!list.length) return emptyState(ic, '还没有' + label, '剧本拆出出场清单后，' + label + '会出现在这里。')
+  const shape = tab === 'characters' ? 'tall' : 'wide'
+  return '<div class="ents ' + tab + '">' + list.map(e => {
+    const cover = e.image && e.image.media ? zimg(e.image.media, e.name + ' 设定图', shape) : '<span>还没出图</span>'
+    const extras = e.extras.length ? '<div class="thumbs">' + e.extras.map(x => {
+      const sq = x.label.includes('特写')
+      return '<figure class="thumb' + (sq ? ' square' : '') + '"><div class="well">' + (x.image && x.image.media ? zimg(x.image.media, e.name + ' ' + x.label, sq ? 'square' : 'wide') : '<span>未出</span>') + '</div>' +
+        '<figcaption>' + esc(x.label) + st(x.image) + (x.note ? '<small title="' + esc(x.note) + '">' + esc(x.note) + '</small>' : '') + '</figcaption></figure>'
+    }).join('') + '</div>' : ''
+    return '<section class="ent" aria-label="' + esc(e.name) + '"><div class="well cover ' + shape + '">' + cover + '</div><div class="ent-body"><h2>' + esc(e.name) + st(e.image) + '</h2>' + extras +
+      (txt(e.brief) ? drawer('外观要点', '<pre>' + esc(txt(e.brief)) + '</pre>', 'b' + e.scope, st(e.brief), true) : '') + (txt(e.desc) ? drawer('定妆描述', '<pre>' + esc(txt(e.desc)) + '</pre>', 'd' + e.scope) : '') +
+      libRevise(e.brief, '改外观设计，描述和图会跟着重来') + '</div></section>'
+  }).join('') + '</div>'
 }
 function formatScreenplay(text) {
   return String(text || '').split('\n').map(line => {
@@ -485,44 +714,45 @@ function formatScreenplay(text) {
   }).join('')
 }
 function rosterAside(r, extra) {
-  return '<div class="card aside"><h4>出场</h4><div class="people">' + r.characters.map(c => '<div><b>' + esc(c.name) + '</b> <span class="muted">' + esc(c.gender + ' · ' + c.age_look) + '</span>' + (c.tier ? ' <span class="badge">' + esc(c.tier) + '</span>' : '') + '</div>').join('') + '</div>' +
-    '<div class="small"><span class="muted">地点</span>　' + r.locations.map(l => esc(l.name)).join('、') + '</div><div class="small" style="margin-bottom:8px"><span class="muted">道具</span>　' + (r.props.map(p => esc(p.name)).join('、') || '无') + '</div>' + (extra || '') + '</div>'
+  return '<div class="aside"><h2>出场</h2><ul class="people">' + r.characters.map(c => '<li><b>' + esc(c.name) + '</b><span class="meta">' + esc([c.gender, c.age_look].filter(Boolean).join('，')) + '</span>' + (c.tier ? '<span class="tag">' + esc(c.tier) + '</span>' : '') + '</li>').join('') + '</ul>' +
+    '<dl><dt>地点</dt><dd>' + (r.locations.map(l => esc(l.name)).join('、') || '无') + '</dd><dt>道具</dt><dd>' + (r.props.map(p => esc(p.name)).join('、') || '无') + '</dd></dl>' + (extra || '') + '</div>'
 }
+const beatStat = beats => '<div class="stat"><span><b>' + beats.length + '</b>拍</span><span>约 <b>' + beats.reduce((a, b) => a + b.seconds, 0) + '</b>秒</span></div>'
 function scriptPage(sc) {
-  if (!sc) return emptyState('scroll', '还没有剧本', '')
+  if (!sc) return emptyState('scroll', '还没有剧本', '在「新故事」里写好剧本、建成项目后，剧本会出现在这里。', '<a class="btn" href="#story">去写故事</a>')
   let page = ''
   for (const s of sc.scenes) {
-    page += '<div class="h">' + esc(s.id + ' · ' + s.location) + '</div>' + (s.setting ? '<div class="set">' + esc(s.setting) + '</div>' : '')
-    for (const b of s.beats) page += '<div class="beat"><span class="id">' + esc(b.id) + '<br>' + b.seconds + 's</span><div><div class="act">' + esc(b.action) + '</div>' +
+    page += '<div class="h"><span class="sid" translate="no">' + esc(s.id) + '</span>' + esc(s.location) + '</div>' + (s.setting ? '<div class="set">' + esc(s.setting) + '</div>' : '')
+    for (const b of s.beats) page += '<div class="beat"><span class="id"><span translate="no">' + esc(b.id) + '</span><br>' + b.seconds + 's</span><div><div class="act">' + esc(b.action) + '</div>' +
       b.lines.map(l => '<div class="say' + (l.vo ? ' vo' : '') + '"><b>' + esc(l.speaker) + (l.vo ? '（画外音）' : '') + '</b>：' + esc(l.text) + '</div>').join('') +
       (b.changes.length ? '<div class="chg">' + esc(b.changes.join('；')) + '</div>' : '') + '</div></div>'
   }
-  const secs = sc.scenes.flatMap(s => s.beats).reduce((a, b) => a + b.seconds, 0)
-  return '<div class="screenplay"><div class="card page">' + page + '</div>' + rosterAside(sc.roster, '<div class="muted small">' + sc.scenes.flatMap(s => s.beats).length + ' 拍 · 约 ' + secs + ' 秒</div>') + '</div>'
+  return '<div class="screenplay"><article class="page">' + page + '</article>' + rosterAside(sc.roster, beatStat(sc.scenes.flatMap(s => s.beats))) + '</div>'
 }
 function storyboard(list) {
-  if (!list.length) return emptyState('film', '还没有分段', '人物、地点、道具都锁定后自动分段')
-  return list.map(s => '<article class="card seg"><header><h3>第 ' + s.id.slice(1) + ' 段</h3><span class="badge">' + esc(s.location) + '</span><span class="badge">' + s.seconds + ' 秒</span>' + (s.continues ? '<span class="badge blue">承接上一段</span>' : '') + st(s.timeline) + '<div class="sum">' + esc(s.summary) + '</div></header>' +
-    '<div class="body"><div>' + (s.timeline ? tlTable(s.timeline.payload, 's' + s.id) : '<div class="skeleton" style="height:80px"></div><div class="muted small" style="margin-top:6px">时间轴还没写</div>') + libRevise(s.timeline, '改这一段的时间轴，关键帧和草稿都会重来') + '</div>' +
-    '<div class="kfs">' + s.cuts.map(c => '<div class="kf"><div class="img">' + (s.continues && c.index === 1 ? '接上一段的尾巴' : c.keyframe && c.keyframe.media ? zimg(c.keyframe.media) : '关键帧未出') + '</div>第 ' + c.index + ' 镜 · ' + c.start + 's' + st(c.keyframe) +
-      (txt(c.desc) ? drawer('描述', '<pre>' + esc(txt(c.desc)) + '</pre>', 'k' + s.id + c.index) : '') + '</div>').join('') + '</div></div></article>').join('')
+  if (!list.length) return emptyState('film', '还没有分段', '人物、地点、道具都定下来后，会自动分段。')
+  return list.map(s => '<section class="seg" aria-labelledby="sg-' + esc(s.id) + '"><header><h2 id="sg-' + esc(s.id) + '">第 ' + esc(s.id.slice(1)) + ' 段</h2><span class="tag">' + esc(s.location) + '</span><span class="tag">' + s.seconds + ' 秒</span>' + (s.continues ? '<span class="tag blue">承接上一段</span>' : '') + st(s.timeline) + '<div class="sum">' + esc(s.summary) + '</div></header>' +
+    '<div class="body"><div>' + (s.timeline ? tlTable(s.timeline.payload, 's' + s.id, false) : '<div class="skeleton" style="height:80px"></div><div class="meta" style="margin-top:6px">时间轴还没写</div>') + libRevise(s.timeline, '改这一段的时间轴，关键帧和草稿都会重来') + '</div>' +
+    '<div class="kfs">' + s.cuts.map(c => '<div class="kf"><div class="well">' + (s.continues && c.index === 1 ? '接上一段的尾巴' : c.keyframe && c.keyframe.media ? zimg(c.keyframe.media, '第 ' + s.id.slice(1) + ' 段 第 ' + c.index + ' 镜 关键帧') : '关键帧未出') + '</div>' +
+      '<div class="cap">第 ' + c.index + ' 镜<span class="t">' + c.start + 's</span>' + st(c.keyframe) + '</div>' +
+      (txt(c.desc) ? drawer('描述', '<pre>' + esc(txt(c.desc)) + '</pre>', 'k' + s.id + c.index) : '') + '</div>').join('') + '</div></div></section>').join('')
 }
-const vid = x => x && x.media ? '<video controls preload="metadata" src="' + media(x.media) + '" style="width:100%;border-radius:8px;background:#000"></video>' : ''
+const vid = x => x && x.media ? '<div class="well"><video controls preload="metadata" src="' + media(x.media) + '"></video></div>' : ''
 function videos(l) {
   let h = ''
-  if (l.speakers.length) h += '<h3 class="sec">' + icon('sparkle') + '试音与音色</h3><div class="grid">' + l.speakers.map(v => '<div class="card ent"><div class="body"><div class="name"><b>' + esc(v.name) + '</b>' + st(v.audition) + '</div>' + vid(v.audition) +
-    (v.voice && v.voice.media ? '<div class="muted small">截出的音色 ' + v.voice.payload.from + '–' + v.voice.payload.to + ' 秒</div><audio controls src="' + media(v.voice.media) + '" style="width:100%"></audio>' : '') + '</div></div>').join('') + '</div>'
+  if (l.speakers.length) h += '<h2 class="sec">' + icon('sparkle') + '试音与音色</h2><div class="clips voices">' + l.speakers.map(v => '<div class="clipbox"><h3>' + esc(v.name) + st(v.audition) + '</h3>' + vid(v.audition) +
+    (v.voice && v.voice.media ? '<div class="meta">截出的音色：' + v.voice.payload.from + '–' + v.voice.payload.to + ' 秒</div><audio controls src="' + media(v.voice.media) + '"></audio>' : '') + '</div>').join('') + '</div>'
   const clips = l.segments.filter(s => s.draft || s.final)
-  if (clips.length) h += '<h3 class="sec">' + icon('video') + '每段的片子</h3><div class="grid wide">' + clips.map(s => '<div class="card ent"><div class="body"><div class="name"><b>第 ' + s.id.slice(1) + ' 段</b>' + st(s.draft) + '</div>' +
-    (s.final ? '<div class="muted small">精修片</div>' + vid(s.final) : '') + (s.draft ? '<div class="muted small">草稿' + (s.trim ? ' · 用 ' + s.trim.payload.in + '–' + s.trim.payload.out + ' 秒' : '') + '</div>' + vid(s.draft) : '') + '</div></div>').join('') + '</div>'
-  if (l.cutDraft) h += '<h3 class="sec">' + icon('film') + '整集草稿</h3><div class="card" style="padding:14px">' + vid(l.cutDraft) + '</div>'
-  if (l.cutFinal) h += '<h3 class="sec">' + icon('play') + '交付片</h3><div class="card" style="padding:14px">' + vid(l.cutFinal) + '</div>'
-  return h || emptyState('play', '还没有出片', 'GPU 开机、授权出片后，试音和草稿会出现在这里')
+  if (clips.length) h += '<h2 class="sec">' + icon('video') + '每段的片子</h2><div class="clips">' + clips.map(s => '<div class="clipbox"><h3>第 ' + esc(s.id.slice(1)) + ' 段' + st(s.draft) + '</h3>' +
+    (s.final ? '<div class="meta">精修片</div>' + vid(s.final) : '') + (s.draft ? '<div class="meta">草稿' + (s.trim ? '，用 ' + s.trim.payload.in + '–' + s.trim.payload.out + ' 秒' : '') + '</div>' + vid(s.draft) : '') + '</div>').join('') + '</div>'
+  if (l.cutDraft) h += '<h2 class="sec">' + icon('film') + '整集草稿</h2><div class="clipbox" style="max-width:1100px">' + vid(l.cutDraft) + '</div>'
+  if (l.cutFinal) h += '<h2 class="sec">' + icon('play') + '交付片</h2><div class="clipbox" style="max-width:1100px">' + vid(l.cutFinal) + '</div>'
+  return h || emptyState('play', '还没有出片', 'GPU 开机、在右下角授权出片后，试音和草稿会出现在这里。')
 }
 function libPage() {
   if (!L) return '<div class="skeleton"></div>'
   if (tab === 'characters') return entities(L.characters)
-  if (tab === 'locations') return entities(L.locations, true)
+  if (tab === 'locations') return entities(L.locations)
   if (tab === 'props') return entities(L.props)
   if (tab === 'script') return scriptPage(L.script)
   if (tab === 'storyboard') return storyboard(L.segments)
@@ -533,10 +763,10 @@ function libPage() {
 const STEPS = [['directions', '故事方向'], ['setup', '本集设定'], ['script', '剧本初稿'], ['script-review', '审读'], ['script-revised', '改写'], ['script-extract', '拆成拍']]
 function stepsBar(s) {
   const done = { directions: !!s.directions, setup: !!s.setup, script: !!s.draft, 'script-review': !!s.review, 'script-revised': !!s.text, 'script-extract': !!s.script }
-  return '<div class="steps">' + STEPS.map(([k, v], i) => {
+  return '<ol class="steps" aria-label="写作步骤">' + STEPS.map(([k, v], i) => {
     const now = s.busy && s.step === k
-    return '<span class="s ' + (now ? 'now' : done[k] ? 'done' : '') + '"><i>' + (now ? '<span class="spin" style="width:10px;height:10px;border-width:1.5px"></span>' : done[k] ? '✓' : i + 1) + '</i>' + v + '</span>'
-  }).join('') + '</div>'
+    return '<li class="' + (now ? 'now' : done[k] ? 'done' : '') + '"' + (now ? ' aria-current="step"' : '') + '><i aria-hidden="true">' + (now ? '<span class="spin sm"></span>' : done[k] ? '✓' : i + 1) + '</i>' + v + (now ? '<span class="vh">（正在写）</span>' : done[k] ? '<span class="vh">（已完成）</span>' : '') + '</li>'
+  }).join('') + '</ol>'
 }
 // What the step being written has put down so far, as the model writes it; JSON steps show what can be read of them.
 function livePane(s) {
@@ -550,114 +780,119 @@ function livePane(s) {
   } else if (s.step === 'script-extract') body = '<div class="wait">已拆出 ' + (t.match(/"action"\s*:/g) || []).length + ' 拍</div>'
   else if (s.step === 'script' || s.step === 'script-revised') body = formatScreenplay(t)
   else body = '<pre>' + esc(t) + '</pre>'
-  return '<div class="card live"><div class="head"><span class="spin"></span><b>正在写「' + esc(label) + '」</b><span class="sp"></span><span class="muted small">' +
-    (t ? '已写 ' + t.length + ' 字 · ' : '') + '这一步 ' + live.seconds + ' 秒</span></div><div class="page" id="livebody">' + body + '<span class="caret"></span></div></div>'
+  return '<section class="live" role="status" aria-live="off"><div class="head"><span class="spin"></span><b>正在写「' + esc(label) + '」</b><span class="sp"></span><span class="meta">' +
+    (t ? '已写 ' + t.length + ' 字，' : '') + '这一步 ' + live.seconds + ' 秒</span></div><article class="page" id="livebody">' + body + '<span class="caret" aria-hidden="true"></span></article></section>'
 }
 // The parts already written while the rest is still being written.
 function doneParts(s) {
   const parts = []
   if (s.setup) parts.push(drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ws'))
-  if (s.draft && s.text !== s.draft) parts.push(drawer('剧本初稿', '<div class="page" style="padding:6px 0">' + formatScreenplay(s.draft) + '</div>', 'wd'))
+  if (s.draft && s.text !== s.draft) parts.push(drawer('剧本初稿', '<div class="page">' + formatScreenplay(s.draft) + '</div>', 'wd'))
   if (s.review) parts.push(drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'wr'))
-  if (s.text && s.step === 'script-revised') parts.push(drawer('上一版剧本', '<div class="page" style="padding:6px 0">' + formatScreenplay(s.text) + '</div>', 'wt'))
-  return parts.length ? '<div class="card done-parts">' + parts.join('') + '</div>' : ''
+  if (s.text && s.step === 'script-revised') parts.push(drawer('上一版剧本', '<div class="page">' + formatScreenplay(s.text) + '</div>', 'wt'))
+  return parts.length ? '<div class="done-parts">' + parts.join('') + '</div>' : ''
 }
 function storyStatus(s) {
-  if (s.busy) return '<span class="badge blue"><span class="spin" style="width:9px;height:9px;border-width:1.5px"></span>正在写</span>'
-  if (s.project) return '<span class="badge jade">已建项目</span>'
-  if (s.script) return '<span class="badge gold">剧本待你看</span>'
-  if (s.directions && s.chosen === undefined) return '<span class="badge gold">方向待你挑</span>'
-  return s.error ? '<span class="badge red">出错了</span>' : '<span class="badge">未完成</span>'
+  if (s.busy) return '<span class="tag blue"><span class="spin sm"></span>正在写</span>'
+  if (s.project) return '<span class="tag green">已建项目</span>'
+  if (s.script) return '<span class="tag gold">剧本待你看</span>'
+  if (s.text) return '<span class="tag gold">正文待你改</span>'
+  if (s.directions && s.chosen === undefined) return '<span class="tag gold">方向待你挑</span>'
+  return s.error ? '<span class="tag red">出错了</span>' : '<span class="tag">未完成</span>'
 }
 function dirCard(d, i, chosen) {
-  const f = (k, v) => '<div class="f"><b>' + k + '</b>' + esc(v) + '</div>'
-  return '<div class="card dir"><span class="num">方向 ' + (i + 1) + '</span><h3>' + esc(d.title) + '</h3><div class="logline">' + esc(d.logline) + '</div>' +
-    f('主角的策略', d.strategy) + f('对抗', d.opposition) + f('代价', d.cost) + f('本集兑现', d.payoff) + f('开场画面', d.opening) +
-    (chosen === undefined ? '<button class="btn primary" style="align-self:flex-start;margin-top:4px" onclick="chooseDir(' + i + ')">' + icon('check') + '就写这个</button>' : '') + '</div>'
+  const f = (k, v) => '<dt>' + k + '</dt><dd>' + esc(v) + '</dd>'
+  return '<article class="dir"><div class="num">方向 ' + (i + 1) + '</div><h3>' + esc(d.title) + '</h3><p class="logline">' + esc(d.logline) + '</p>' +
+    '<dl>' + f('主角的策略', d.strategy) + f('对抗', d.opposition) + f('代价', d.cost) + f('本集兑现', d.payoff) + f('开场画面', d.opening) + '</dl>' +
+    (chosen === undefined ? '<button type="button" class="btn primary" onclick="chooseDir(' + i + ')">' + icon('check') + '就写这个</button>' : '') + '</article>'
 }
 async function startStory() {
-  const idea = $('#idea').value.trim()
-  if (!idea) return toast('先写一句想法', true)
+  const idea = needText($('#idea'), '先写一句想法'); if (!idea) return
   const j = await api('/api/stories', { idea }, '开始出方向')
-  if (j && j.id) { SID = j.id; ST = null; $('#idea').value = ''; await loadStories() }
+  if (j && j.id) { clearDraft($('#idea')); go('story/' + j.id) }
 }
-const openStory = id => { SID = id; ST = null; lastKey = ''; loadStories() }
-const backToStories = () => { SID = null; ST = null; lastKey = ''; loadStories() }
 async function chooseDir(i, carry) { if (await api('/api/stories/' + SID + '/choose', { index: i, carry: !!carry }, carry ? '带着你的意见从头重写，大约几分钟' : '开始写剧本，大约几分钟')) loadStories() }
+async function rewriteDir(i) {
+  const notes = ST && ST.notes && ST.notes.length
+  if (await ask('从头重写这个方向？', '会丢掉现在的剧本，从本集设定开始重写。' + (notes ? '你提过的 ' + notes + ' 条意见会交给新稿。' : ''), '从头重写')) chooseDir(i, true)
+}
 async function redirectStory() {
   const note = ($('#dnote') && $('#dnote').value.trim()) || ''
   if (!note && !await ask('不写意见直接重出？', '没写意见的话，只是用同一句想法再出三个。', '直接重出')) return
-  if (await api('/api/stories/' + SID + '/redirect', { note }, '重新出方向')) { if ($('#dnote')) $('#dnote').value = ''; loadStories() }
+  if (await api('/api/stories/' + SID + '/redirect', { note }, '重新出方向')) { if ($('#dnote')) clearDraft($('#dnote')); loadStories() }
 }
 async function reviseStory() {
-  const note = $('#note').value.trim()
-  if (!note) return toast('先写意见', true)
-  if (await api('/api/stories/' + SID + '/revise', { note }, '按意见改剧本')) { $('#note').value = ''; loadStories() }
+  const note = needText($('#note'), '先在意见框里写哪里要改'); if (!note) return
+  if (await api('/api/stories/' + SID + '/revise', { note }, '按意见改剧本')) { clearDraft($('#note')); loadStories() }
 }
 async function makeProject() {
   if (!await ask('用这个剧本建项目？', '建好后引擎切到新项目开始跑：外观设计不花钱，出图仍要你授权。', '建项目')) return
   const j = await api('/api/stories/' + SID + '/project', {}, '项目已建好')
   if (j && j.dir) { L = null; await loadProjects(); go('characters') }
 }
+const notePanel = (title, placeholder, buttons) => '<div class="panel"><label for="note"><b>' + title + '</b></label><textarea id="note" name="script-note" data-keep="note-' + SID + '" autocomplete="off" placeholder="' + esc(placeholder) + '"></textarea><div class="row-actions">' + buttons + '</div></div>'
 function storyPage() {
   if (!SID) {
-    return '<div class="card hero"><h2>从一句想法开始</h2><div class="muted">先出三个故事方向，你挑一个，再写成 ' + (PROJ ? PROJ.sample.min + '–' + PROJ.sample.max : '') + ' 秒的剧本：本集设定、正文、审读、改写、拆拍，一步步自动完成。</div>' +
-      '<textarea id="idea" data-keep="idea" placeholder="例如：被认为是废柴的小伙其实是绝顶资质，一次奇遇之后觉醒，一鸣惊人"></textarea>' +
-      '<div><button class="btn accent" onclick="startStory()">' + icon('sparkle') + '出三个方向</button></div></div>' +
-      (STORIES.length ? '<h3 class="sec">之前的故事</h3><div class="stories">' + STORIES.map(s => '<div class="card story-row" onclick="openStory(\'' + s.id + '\')"><span class="t">' + esc(s.directions && s.chosen !== undefined ? s.directions[s.chosen].title : s.idea) + '</span>' + storyStatus(s) + '</div>').join('') + '</div>' : '')
+    return '<section class="compose" aria-labelledby="compose-h"><h2 id="compose-h">从一句想法开始</h2><p>先出三个故事方向，你挑一个，再写成 ' + (PROJ ? PROJ.sample.min + '–' + PROJ.sample.max + ' ' : '') + '秒的剧本。本集设定、正文、审读、改写、拆拍会一步步自动完成。</p>' +
+      '<label class="vh" for="idea">一句想法</label><textarea id="idea" name="idea" data-keep="idea" autocomplete="off" placeholder="例如：被认为是废柴的小伙其实是绝顶资质，一次奇遇之后觉醒，一鸣惊人…"></textarea>' +
+      '<div><button type="button" class="btn primary big" onclick="startStory()">' + icon('sparkle') + '出三个方向</button></div></section>' +
+      (STORIES.length ? '<h2 class="sec">之前的故事</h2><div class="stories">' + STORIES.map(s => '<a class="story-row" href="#story/' + esc(s.id) + '"><span class="t">' + esc(s.directions && s.chosen !== undefined ? s.directions[s.chosen].title : s.idea) + '</span><span class="meta">' + esc(storyTime(s.id)) + '</span>' + storyStatus(s) + '</a>').join('') + '</div>' : '')
   }
   if (!ST) return '<div class="skeleton"></div>'
   const s = ST
-  let h = '<button class="btn ghost sm" onclick="backToStories()" style="margin-bottom:10px">' + icon('back') + '所有故事</button>' + stepsBar(s)
-  if (s.error) h += '<div class="notice bad" style="margin-bottom:16px">' + icon('alert') + '<span>上一步出错了：' + esc(s.error) + '</span></div>'
-  if (s.busy && s.step === 'script-extract' && s.text) return h + livePane(s) + '<h3 class="sec">写好的剧本（正在拆成拍，拆完就能审）</h3><div class="card page">' + formatScreenplay(s.text) + '</div>' + doneParts(s)
+  let h = '<a class="btn quiet sm back" href="#story">' + icon('back') + '所有故事</a>' + stepsBar(s)
+  if (s.error) h += '<div class="notice bad" style="margin-bottom:18px">' + icon('alert') + '<span>上一步出错了：' + esc(s.error) + '</span></div>'
+  if (s.busy && s.step === 'script-extract' && s.text) return h + livePane(s) + '<h2 class="sec">写好的剧本（正在拆成拍，拆完就能审）</h2><article class="page">' + formatScreenplay(s.text) + '</article>' + doneParts(s)
   if (s.busy) return h + livePane(s) + doneParts(s)
   if (s.directions && s.chosen === undefined) {
-    return h + '<h3 class="sec">★2 挑一个方向</h3><div class="dirs">' + s.directions.map((d, i) => dirCard(d, i)).join('') + '</div>' +
-      '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">都不满意？说说哪里不对</b>' +
-      '<textarea id="dnote" data-keep="dnote" placeholder="例如：主角要更狠一点，别靠奇遇，靠他自己设的局"></textarea>' +
-      '<div class="rvbar"><span class="hint">会带着这三个方向和你的意见，重新出三个</span><span class="sp"></span><button class="btn accent" onclick="redirectStory()">' + icon('redo') + '按意见重新出</button></div></div>'
+    return h + '<h2 class="sec">★2 挑一个方向</h2><div class="dirs">' + s.directions.map((d, i) => dirCard(d, i)).join('') + '</div>' +
+      '<div class="panel"><label for="dnote"><b>都不满意？说说哪里不对</b></label>' +
+      '<textarea id="dnote" name="direction-note" data-keep="dnote-' + SID + '" autocomplete="off" placeholder="例如：主角要更狠一点，别靠奇遇，靠他自己设的局…"></textarea>' +
+      '<div class="note-bar"><span class="hint">会带着这三个方向和你的意见，重新出三个</span><button type="button" class="btn primary" onclick="redirectStory()">' + icon('redo') + '按意见重新出</button></div></div>'
   }
-  const rewriteBtn = s.chosen !== undefined ? '<button class="btn" onclick="chooseDir(' + s.chosen + ', true)">' + icon('redo') + '从头重写这个方向' + (s.notes && s.notes.length ? '（带上你的意见）' : '') + '</button>' : ''
-  if (!s.script && !s.text) return h + rewriteBtn
+  const rewriteBtn = s.chosen !== undefined ? '<button type="button" class="btn" onclick="rewriteDir(' + s.chosen + ')">' + icon('redo') + '从头重写这个方向' + (s.notes && s.notes.length ? '（带上你的意见）' : '') + '</button>' : ''
+  const setupDrawers = (s.setup ? drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss') : '') + (s.review ? drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'sr') : '')
+  if (!s.script && !s.text) {
+    // The review step failed before a rewrite: the first draft can still be read, but only rewritten from the top.
+    if (!s.draft) return h + '<div class="row-actions">' + rewriteBtn + '</div>'
+    return h + '<h2 class="sec">★3 剧本初稿（审读没走完，还不能按意见改）</h2><div class="screenplay"><article class="page">' + formatScreenplay(s.draft) + '</article><div class="aside">' + setupDrawers + '</div></div>' +
+      '<div class="row-actions" style="margin-top:20px">' + rewriteBtn + '</div>'
+  }
   if (!s.script) {
-    return h + '<h3 class="sec">★3 剧本正文 · 还没拆成拍</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div><div class="card aside">' +
-      drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss') + (s.review ? drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'sr') : '') + '</div></div>' +
-      '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：太长了，删掉第二场的追逐，直接进对峙"></textarea>' +
-      '<div style="display:flex;gap:10px"><button class="btn accent" onclick="reviseStory()">' + icon('edit') + '按意见改，再拆成拍</button><span style="flex:1"></span>' + rewriteBtn + '</div></div>'
+    return h + '<h2 class="sec">★3 剧本正文（还没拆成拍）</h2><div class="screenplay"><article class="page">' + formatScreenplay(s.text) + '</article><div class="aside">' + setupDrawers + '</div></div>' +
+      notePanel('哪里要改', '例如：太长了，删掉第二场的追逐，直接进对峙…', '<button type="button" class="btn primary" onclick="reviseStory()">' + icon('edit') + '按意见改，再拆成拍</button><span class="sp"></span>' + rewriteBtn)
   }
-  const beats = s.script.scenes.flatMap(x => x.beats), secs = beats.reduce((a, b) => a + b.seconds, 0)
-  let side = '<div class="muted small" style="margin-bottom:10px">' + beats.length + ' 拍 · 约 ' + secs + ' 秒</div>'
+  let side = beatStat(s.script.scenes.flatMap(x => x.beats))
   side += drawer('选定的方向', '<pre>' + esc(['梗概：' + s.directions[s.chosen].logline, '本集兑现：' + s.directions[s.chosen].payoff].join('\n')) + '</pre>', 'sd')
   side += drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss')
   side += drawer('审读意见（已按它改过）', '<pre>' + esc(s.review) + '</pre>', 'sr')
   if (s.notes && s.notes.length) side += drawer('你提过的意见（' + s.notes.length + ' 条，已改）', '<pre>' + esc(s.notes.join('\n\n')) + '</pre>', 'sn')
   // The sample's length comes from src/m1/spec.ts; the server refuses a project outside it.
+  const secs = s.script.scenes.flatMap(x => x.beats).reduce((a, b) => a + b.seconds, 0)
   const lo = PROJ ? PROJ.sample.min : 0, hi = PROJ ? PROJ.sample.max : Infinity
   const fits = secs >= lo && secs <= hi
-  if (!fits) h += '<div class="notice bad" style="margin-bottom:14px">' + icon('alert') + '<span>按拆拍估算约 ' + secs + ' 秒，要在 ' + lo + '–' + hi + ' 秒之间（' + (secs > hi ? '多了 ' + (secs - hi) : '少了 ' + (lo - secs)) + ' 秒）。在下面写意见说删哪里、加哪里，改好才能建项目。</span></div>'
-  else if (s.notes && s.notes.length) h += '<div class="notice ok" style="margin-bottom:14px">' + icon('check') + '<span>这一版按你最近一条意见改过，等你审。</span></div>'
-  h += '<h3 class="sec">★3 看剧本 · ' + esc(s.directions[s.chosen].title) + '</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div>' + rosterAside(s.script.roster, side) + '</div>'
-  if (s.project) return h + '<div class="notice ok" style="margin-top:16px">' + icon('check') + '<span>已经建成项目，在左上角的项目里切过去看。</span></div>'
-  h += '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：主角觉醒得太突然，前面要有铺垫"></textarea>' +
-    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button>' + rewriteBtn + '<span style="flex:1"></span><button class="btn accent" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 ' + lo + '–' + hi + ' 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button></div></div>'
-  return h
+  if (!fits) h += '<div class="notice bad" style="margin-bottom:18px;max-width:46em">' + icon('alert') + '<span>按拆拍估算约 ' + secs + ' 秒，要在 ' + lo + '–' + hi + ' 秒之间（' + (secs > hi ? '多了 ' + (secs - hi) : '少了 ' + (lo - secs)) + ' 秒）。在下面写意见说删哪里、加哪里，改好才能建项目。</span></div>'
+  else if (s.notes && s.notes.length) h += '<div class="notice ok" style="margin-bottom:18px;max-width:46em">' + icon('check') + '<span>这一版按你最近一条意见改过，等你审。</span></div>'
+  h += '<h2 class="sec">★3 看剧本：' + esc(s.directions[s.chosen].title) + '</h2><div class="screenplay"><article class="page">' + formatScreenplay(s.text) + '</article>' + rosterAside(s.script.roster, side) + '</div>'
+  if (s.project) return h + '<div class="notice ok" style="margin-top:20px;max-width:46em">' + icon('check') + '<span>已经建成项目，在左上角的项目里切过去看。</span></div>'
+  return h + notePanel('哪里要改', '例如：主角觉醒得太突然，前面要有铺垫…', '<button type="button" class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button>' + rewriteBtn + '<span class="sp"></span><button type="button" class="btn primary" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 ' + lo + '–' + hi + ' 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button>')
 }
 
 // ---------- progress ----------
 const LABEL = { done: '完成', review: '待审', running: '在跑', queued: '排队', failed: '失败', waiting: '等前置' }
-async function resubmit(id) { if (await ask('重提这个视频任务？', '它可能没提交成功。重提会再占一次 GPU。', '重提')) act('/api/jobs/' + id + '/resolve', {}, '已重提') }
+async function resubmit(id) { if (await ask('重提这个视频任务？', '它可能没提交成功。重提会再占一次 GPU。', '重提', 'spend')) act('/api/jobs/' + id + '/resolve', {}, '已重提') }
 function progressPage() {
-  let h = ''
-  if (S.unknown.length) h += S.unknown.map(j => '<div class="notice bad" style="margin-bottom:10px">' + icon('alert') + '<span style="flex:1">视频任务 ' + j.id + ' 可能没提交成功：' + esc(j.error) + '</span><button class="btn sm" onclick="resubmit(' + j.id + ')">重提</button></div>').join('')
+  const all = S.progress.flatMap(n => n.items), c = k => all.filter(i => i.status === k).length
+  let h = '<div class="pstat">' + [['在跑', c('running'), 'blue'], ['排队', c('queued'), 'blue'], ['待审', c('review'), 'gold'], ['失败', c('failed') + S.unknown.length, 'red'], ['完成', c('done') + ' / ' + all.length, '']].map(([k, v, t]) => '<div class="' + (v ? t : '') + '"><b>' + v + '</b>' + k + '</div>').join('') + '</div>'
+  // Everything that failed goes on top with its fix, so nothing has to be hunted for in the grid below.
+  const fails = S.progress.flatMap(n => n.items.filter(i => i.status === 'failed').map(i => '<div class="notice bad">' + icon('alert') + '<span><b>' + esc(n.title + ' ' + scopeName(i.scope)) + '</b>：' + esc(i.error) + '</span>' + (i.run ? '<button type="button" class="btn sm" onclick="act(\'/api/node-runs/' + i.run + '/retry\',{},\'已重试\')">重试</button>' : '') + '</div>'))
+  const lost = S.unknown.map(j => '<div class="notice bad">' + icon('alert') + '<span><b>视频任务 ' + j.id + '</b> 可能没提交成功：' + esc(j.error) + '</span><button type="button" class="btn sm" onclick="resubmit(' + j.id + ')">重提</button></div>')
+  if (fails.length || lost.length) h += '<h2 class="sec">要处理</h2><div class="fail">' + lost.concat(fails).join('') + '</div><h2 class="sec">每一步</h2>'
   h += '<div class="nodes">' + S.progress.map(n => {
-    const all = n.items.every(i => i.status === 'done')
     const count = k => n.items.filter(i => i.status === k).length
-    const head = '<h4>' + esc(n.title) + '<span class="sp" style="flex:1"></span><span class="muted small">' + count('done') + ' / ' + n.items.length + '</span></h4>'
-    if (all) return '<div class="card node">' + head + '<span class="chip done">全部完成</span></div>'
-    const fails = n.items.filter(i => i.status === 'failed')
-    return '<div class="card node">' + head + '<div class="chips">' + n.items.map(i => '<span class="chip ' + i.status + '" title="' + esc(i.scope) + '">' + esc(scopeName(i.scope)) + ' · ' + LABEL[i.status] + '</span>').join('') + '</div>' +
-      (fails.length ? '<div class="fail">' + fails.map(i => '<div class="notice bad">' + icon('alert') + '<span style="flex:1"><b>' + esc(scopeName(i.scope)) + '</b>：' + esc(i.error) + '</span>' + (i.run ? '<button class="btn sm" onclick="act(\'/api/node-runs/' + i.run + '/retry\',{},\'已重试\')">重试</button>' : '') + '</div>').join('') + '</div>' : '') + '</div>'
+    const head = '<h2>' + esc(n.title) + '<span class="meta">' + count('done') + ' / ' + n.items.length + '</span></h2>'
+    if (n.items.every(i => i.status === 'done')) return '<section class="node">' + head + '<span class="chip done">全部完成</span></section>'
+    return '<section class="node">' + head + '<div class="chips">' + n.items.map(i => '<span class="chip ' + i.status + '" title="' + esc(i.scope) + '">' + esc(scopeName(i.scope)) + '<em>' + LABEL[i.status] + '</em></span>').join('') + '</div></section>'
   }).join('') + '</div>'
   return h
 }
@@ -674,7 +909,7 @@ function phases() {
       const tip = n.title + '：完成 ' + c('done') + ' / ' + n.items.length + (c('review') ? '，待审 ' + c('review') : '') + (c('running') + c('queued') ? '，在跑 ' + (c('running') + c('queued')) : '') + (c('failed') ? '，失败 ' + c('failed') : '')
       return '<i title="' + esc(tip) + '">' + w('done', 'g') + w('review', 'y') + (c('running') + c('queued') ? '<b class="n" style="width:' + (100 * (c('running') + c('queued')) / t) + '%"></b>' : '') + w('failed', 'r') + '</i>'
     }).join('') || '<i></i>'
-    return '<div class="phase"><div class="lbl"><span>' + name + '</span><em>' + done + ' / ' + items.length + '</em></div><div class="segbar">' + bar + '</div></div>'
+    return '<div class="phase" role="img" aria-label="' + esc(name + '：完成 ' + done + ' / ' + items.length) + '"><div class="lbl" aria-hidden="true"><span>' + name + '</span><em>' + done + ' / ' + items.length + '</em></div><div class="segbar">' + bar + '</div></div>'
   }).join('')
 }
 const POINT_ICON = { 4: 'user', 5: 'image', 6: 'film', 7: 'video', 8: 'film', 9: 'play' }
@@ -683,12 +918,12 @@ function nav() {
   for (const r of S.reviews) (groups[r.point] = groups[r.point] || []).push(r)
   const points = Object.keys(groups).map(Number).sort((a, b) => a - b)
   const failed = S.progress.reduce((n, x) => n + x.items.filter(i => i.status === 'failed').length, 0) + S.unknown.length
-  const item = (key, label, ic, n, muted) => '<div class="item' + (tab === key ? ' sel' : '') + '" onclick="go(' + (typeof key === 'number' ? key : '\'' + key + '\'') + ')">' + icon(ic) + '<span>' + label + '</span>' + (n ? '<span class="n' + (muted ? ' muted' : '') + '">' + n + '</span>' : '') + '</div>'
+  const item = (key, href, label, ic, n, tone) => '<a class="item' + (tab === key ? ' sel' : '') + '" href="#' + href + '"' + (tab === key ? ' aria-current="page"' : '') + '>' + icon(ic) + '<span class="lb">' + label + '</span>' + (n ? '<span class="n ' + (tone || '') + '">' + n + '</span>' : '') + '</a>'
   const busy = STORIES.filter(s => s.busy).length
-  return '<h4>写故事</h4>' + item('story', '新故事', 'pen', busy || 0, true) +
-    '<h4>待审</h4>' + (points.length ? points.map(p => item(p, '★' + p + ' ' + groups[p][0].title, POINT_ICON[p] || 'star', groups[p].length)).join('') : '<div class="none">没有待审的</div>') +
-    '<h4>已有</h4>' + Object.entries(LIB).map(([k, [v, ic]]) => item(k, v, ic)).join('') +
-    '<h4>流程</h4>' + item('progress', '进度', 'pulse', failed)
+  return '<div class="grp">写故事</div>' + item('story', SID ? 'story/' + SID : 'story', '新故事', 'pen', busy) +
+    '<div class="grp"><span>待审</span>' + (S.reviews.length ? '<span>' + S.reviews.length + '\u00a0项</span>' : '') + '</div>' + (points.length ? points.map(p => item(p, p, '★' + p + ' ' + esc(groups[p][0].title), POINT_ICON[p] || 'star', groups[p].length, 'need')).join('') : '<div class="none">没有待审的</div>') +
+    '<div class="grp">已有</div>' + Object.entries(LIB).map(([k, [v, ic]]) => item(k, k, v, ic)).join('') +
+    '<div class="grp">流程</div>' + item('progress', 'progress', '进度', 'pulse', failed, 'bad')
 }
 const NODE = { image: '定妆照', derive: '三视图与特写', view: '机位图', keyframe: '关键帧', audition: '试音', draft: '草稿', refine: '精修' }
 function batch(pool) {
@@ -700,53 +935,92 @@ function batch(pool) {
 }
 async function grant(pool) {
   const b = batch(pool)
-  const label = pool === 'image' ? '开始出图 ' + b.n + ' 张（约 $' + (b.n * S.imageUsd).toFixed(2) + '）' : '开始出片 ' + b.n + ' 段'
-  if (b.n && await ask(label + '？', b.what, '开始')) act('/api/permits', { scope: 'e1', pool, count: b.n }, '已授权')
+  if (!b.n) return
+  const body = pool === 'image'
+    ? '约 ' + usd(b.n * S.imageUsd) + '，按每张 ' + USD4.format(S.imageUsd) + ' 的报价上限估。\n\n' + b.what
+    : b.what + (S.gpu ? '' : '\n\nGPU 现在离线，授权后等它开机才跑。')
+  if (await ask(pool === 'image' ? '开始出图 ' + b.n + ' 张？' : '开始出片 ' + b.n + ' 段？', body, pool === 'image' ? '开始出图' : '开始出片', 'spend')) act('/api/permits', { scope: 'e1', pool, count: b.n }, '已授权')
 }
+function foldDock() { dockFold = !dockFold; localStorage.setItem('yx.dock', dockFold ? 'fold' : ''); paintDock(); $('#dockfold').focus() }
 function dock() {
   const img = batch('image'), vidb = batch('video'), gpuWait = S.pending.filter(p => p.gpu)
   if (!img.n && !vidb.n && !gpuWait.length) return ''
-  let h = '<h4>' + icon('sparkle') + '等你开始</h4>'
-  if (img.n) h += '<div class="what">' + esc(img.brief) + '</div><button class="btn accent" onclick="grant(\'image\')">' + icon('image') + '开始出图 ' + img.n + ' 张 · 约 $' + (img.n * S.imageUsd).toFixed(2) + '</button>'
-  if (vidb.n) h += '<div class="what">' + esc(vidb.brief) + '</div><button class="btn accent" onclick="grant(\'video\')">' + icon('video') + '开始出片 ' + vidb.n + ' 段' + (S.gpu ? '' : '（GPU 开机后才跑）') + '</button>'
+  const sum = [img.n ? '出图 ' + img.n + ' 张' : '', vidb.n ? '出片 ' + vidb.n + ' 段' : '', gpuWait.length ? '等 GPU ' + gpuWait.length + ' 项' : ''].filter(Boolean).join('，')
+  const head = '<div class="dock-h"><h2>' + icon('coin') + (dockFold ? '待授权：' + sum : '等你授权') + '</h2><button type="button" class="btn sm quiet" id="dockfold" onclick="foldDock()" aria-expanded="' + !dockFold + '" aria-label="' + (dockFold ? '展开授权卡' : '收起授权卡') + '">' + icon(dockFold ? 'up' : 'down') + '</button></div>'
+  if (dockFold) return head
+  let h = head
+  if (img.n) h += '<div class="what">' + esc(img.brief) + '</div><button type="button" class="btn spend grant" onclick="grant(\'image\')">' + icon('image') + '开始出图 ' + img.n + ' 张，约 ' + usd(img.n * S.imageUsd) + '</button>'
+  if (vidb.n) h += '<div class="what">' + esc(vidb.brief) + (S.gpu ? '' : '。GPU 离线，授权后等开机才跑') + '</div><button type="button" class="btn spend grant" onclick="grant(\'video\')">' + icon('video') + '开始出片 ' + vidb.n + ' 段</button>'
   if (gpuWait.length) h += '<div class="notice">' + icon('alert') + '<span>已授权、等 GPU 开机：' + esc(gpuWait.map(p => (NODE[p.node] || p.node) + ' ' + scopeName(p.scope)).join('、')) + '</span></div>'
   return h
 }
-function emptyState(ic, title, sub) { return '<div class="empty">' + icon(ic) + '<b>' + esc(title) + '</b>' + esc(sub) + '</div>' }
+function paintDock() { const d = dock(); $('#dock').innerHTML = d; $('#dock').classList.toggle('show', !!d); $('#dock').classList.toggle('fold', dockFold) }
+function emptyState(ic, title, sub, action) { return '<div class="empty">' + icon(ic) + '<b>' + esc(title) + '</b><p>' + esc(sub) + '</p>' + (action || '') + '</div>' }
 
 function titles() {
-  if (tab === 'story') return ['新故事', SID ? '' : '一句想法 → 三个方向 → 剧本 → 建项目']
+  if (tab === 'story') return ['新故事', SID ? '' : '一句想法，三个方向，一个剧本，再建成项目']
   if (tab === 'progress') return ['进度', '每一步在每个人物、地点、段落上的状态']
   if (LIB[tab]) return [LIB[tab][0], '现在用的版本；标「待审」「等重做」的还没定下来']
+  const n = S.reviews.filter(x => x.point === tab).length
   const r = S.reviews.find(x => x.point === tab)
-  return ['★' + tab + ' ' + (r ? r.title : ''), (S.reviews.filter(x => x.point === tab).length || 0) + ' 项待审']
+  return ['★' + tab + ' ' + (r ? r.title : ''), n + ' 项待审，逐张看完写意见或通过']
 }
-// Keep what the creator is in the middle of across a re-render: open drawers, open note boxes, typed text, scroll.
+// Keep what the creator is in the middle of across a re-render: drawers, note boxes, focus, caret, scroll.
+const FOCUSABLE = 'a[href], button, textarea, select, summary, video, audio'
+const focusSig = el => !el || el === document.body ? null : [el.tagName, el.id, el.getAttribute('href'), el.getAttribute('onclick'), el.tagName === 'SUMMARY' ? el.parentElement.dataset.key : ''].join('|')
 function snapshot() {
+  const a = document.activeElement
   return {
-    open: [...document.querySelectorAll('details[open][data-key]')].map(d => d.dataset.key),
+    open: Object.fromEntries([...document.querySelectorAll('details[data-key]')].map(d => [d.dataset.key, d.open])),
     rv: [...document.querySelectorAll('.revise.open')].map(d => d.id),
-    keep: Object.fromEntries([...document.querySelectorAll('[data-keep]')].map(t => [t.dataset.keep, t.value])),
-    focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.keep : null,
+    focus: focusSig(a), sel: a && a.tagName === 'TEXTAREA' ? [a.selectionStart, a.selectionEnd] : null,
+    tl: Object.fromEntries([...document.querySelectorAll('.tl[id]')].map(t => [t.id, t.scrollTop])),
     y: window.scrollY,
     // The live text follows the writing unless the creator has scrolled up in it to read.
     live: (b => !b ? null : b.scrollHeight - b.scrollTop - b.clientHeight < 40 ? 'end' : b.scrollTop)(document.getElementById('livebody')),
   }
 }
 function restore(s) {
-  s.open.forEach(k => { const d = document.querySelector('details[data-key="' + CSS.escape(k) + '"]'); if (d) d.open = true })
-  s.rv.forEach(id => { const d = document.getElementById(id); if (d) d.classList.add('open') })
-  for (const [k, v] of Object.entries(s.keep)) { const t = document.querySelector('[data-keep="' + CSS.escape(k) + '"]'); if (t) t.value = v }
-  if (s.focus) { const t = document.querySelector('[data-keep="' + CSS.escape(s.focus) + '"]'); if (t) t.focus() }
+  for (const d of document.querySelectorAll('details[data-key]')) if (d.dataset.key in s.open) d.open = s.open[d.dataset.key]
+  s.rv.forEach(id => { const d = document.getElementById(id); if (d) { d.classList.add('open'); document.querySelectorAll('[aria-controls="' + id + '"]').forEach(b => b.setAttribute('aria-expanded', 'true')) } })
+  for (const t of document.querySelectorAll('[data-keep]')) if (DRAFTS[t.dataset.keep] !== undefined) t.value = DRAFTS[t.dataset.keep]
+  for (const [id, top] of Object.entries(s.tl)) { const t = document.getElementById(id); if (t) t.scrollTop = top }
+  if (s.focus) {
+    const t = [...document.querySelectorAll(FOCUSABLE)].find(x => focusSig(x) === s.focus)
+    if (t) { t.focus({ preventScroll: true }); if (s.sel && t.setSelectionRange) t.setSelectionRange(s.sel[0], s.sel[1]) }
+  }
   const b = document.getElementById('livebody')
   if (b) b.scrollTop = s.live === null || s.live === 'end' ? b.scrollHeight : s.live
   window.scrollTo(0, s.y)
 }
+
+// ---------- routing ----------
+// The page lives in the address: #6 (a review point), #characters, #progress, #story or #story/<id>.
+function parseHash(h) {
+  const [t, id] = decodeURIComponent(String(h || '').replace(/^#/, '')).split('/')
+  if (!t) return null
+  const key = /^\d+$/.test(t) ? Number(t) : t
+  if (typeof key === 'string' && key !== 'story' && key !== 'progress' && !LIB[key]) return null
+  return { tab: key, sid: key === 'story' ? id || null : SID }
+}
+const hashOf = () => tab === 'story' && SID ? 'story/' + SID : String(tab)
+function applyHash() {
+  const r = parseHash(location.hash); if (!r) return
+  tab = r.tab; localStorage.setItem('yx.tab', hashOf())
+  if (tab === 'story') { if (r.sid !== SID) { SID = r.sid; ST = null } loadStories() }
+  if (LIB[tab]) { L = null; loadLib() }
+  lastKey = ''; render(); window.scrollTo(0, 0)
+}
+window.addEventListener('hashchange', applyHash)
+const go = t => { if (location.hash === '#' + t) applyHash(); else location.hash = '#' + t }
+
 function render() {
   if (!S) return
   const groups = new Set(S.reviews.map(r => r.point))
-  if (tab === null || (typeof tab === 'string' && /^\d+$/.test(tab))) tab = tab === null ? null : Number(tab)
+  const want = tab
   if (tab === null || (typeof tab === 'number' && !groups.has(tab))) tab = groups.size ? Math.min(...groups) : (tab === null ? 'story' : 'characters')
+  if (tab !== want || location.hash !== '#' + hashOf()) history.replaceState(null, '', '#' + hashOf())
+  if (LIB[tab] && LIB[want] === undefined && !L) loadLib()
   const key = JSON.stringify([tab, S, LIB[tab] ? L : null, tab === 'story' ? [SID, ST, STORIES] : null])
   if (key === lastKey) return
   // Never pull a playing clip out from under the creator; the new data shows once it is paused.
@@ -757,18 +1031,20 @@ function render() {
   const snap = snapshot()
   $('#gpudot').className = 'dot ' + (S.gpu ? 'on' : 'off')
   $('#gputext').textContent = S.gpu ? 'GPU 在线' : 'GPU 离线'
-  $('#spent').textContent = '已花 $' + S.spent.usd.toFixed(3) + ' · 出片 ' + S.spent.videos + ' 段'
+  $('#spent').textContent = usd(S.spent.usd)
+  $('#videos').textContent = S.spent.videos + ' 段'
+  document.title = (S.reviews.length ? '（' + S.reviews.length + ' 待审）' : '') + '言象审核台'
   $('#phases').innerHTML = phases()
   $('#nav').innerHTML = nav()
   const [t, sub] = titles(); $('#title').textContent = t; $('#subtitle').textContent = sub
   $('#view').innerHTML = tab === 'story' ? storyPage() : tab === 'progress' ? progressPage() : LIB[tab] ? libPage() : reviewsPage(tab)
-  const d = dock(); $('#dock').innerHTML = d; $('#dock').classList.toggle('show', !!d)
+  paintDock()
   restore(snap)
 }
 
 // ---------- data ----------
 async function loadStatus() {
-  try { S = await (await fetch('/api/status')).json() } catch (e) { $('#view').innerHTML = emptyState('alert', '连不上引擎', 'bun src/m1/run.ts 在跑吗？每 4 秒重试一次'); lastKey = ''; return }
+  try { S = await (await fetch('/api/status')).json() } catch (e) { $('#view').innerHTML = emptyState('alert', '连不上引擎', '确认 bun src/m1/run.ts 还在跑；页面每 4 秒自动重试一次。'); lastKey = ''; return }
   render()
 }
 async function loadLib() { try { L = await (await fetch('/api/library')).json() } catch (e) { return } render() }
@@ -782,12 +1058,19 @@ async function loadStories() {
 async function loadProjects() {
   try { PROJ = await (await fetch('/api/projects')).json() } catch (e) { return }
   $('#proj').innerHTML = PROJ.projects.map(p => '<option value="' + esc(p.dir) + '"' + (p.current ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('')
-  const b = $('#run'); b.className = 'run' + (PROJ.paused ? '' : ' on'); b.innerHTML = PROJ.paused ? icon('play2') + '已暂停 · 继续' : icon('pause') + '运行中 · 暂停'
+  $('#rundot').className = 'dot ' + (PROJ.paused ? 'idle' : 'on')
+  $('#runtext').textContent = PROJ.paused ? '已暂停' : '运行中'
+  const b = $('#run'); b.innerHTML = PROJ.paused ? icon('play2') + '继续运行' : icon('pause') + '暂停'
 }
 $('#proj').onchange = async e => { if (await api('/api/projects/switch', { dir: e.target.value }, '已切换（先暂停着）')) { L = null; tab = null; lastKey = ''; await loadProjects(); loadStatus() } else loadProjects() }
 $('#run').onclick = async () => { await api('/api/pause', { paused: !PROJ.paused }, PROJ.paused ? '开始跑' : '已暂停'); loadProjects() }
 
+{
+  const r = parseHash(location.hash) || parseHash(localStorage.getItem('yx.tab'))
+  if (r) { tab = r.tab; SID = r.sid }
+}
 loadProjects(); loadStories(); loadStatus()
+if (LIB[tab]) loadLib()
 setInterval(() => { loadStatus(); loadProjects(); if (LIB[tab]) loadLib() }, 4000)
 setInterval(() => { if (tab === 'story' || STORIES.some(s => s.busy)) loadStories() }, 3000)
 </script>
