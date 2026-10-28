@@ -515,13 +515,14 @@ window.addEventListener('beforeunload', e => { if (Object.values(DRAFTS).some(v 
 function scopeParts(scope) {
   const p = String(scope).split('/')
   if (p[1] === 'char' || p[1] === 'prop' || p[1] === 'loc') return p.slice(2)
+  if (p.length === 3 && p[1] === 'scene') return ['第\u00a0' + p[2].replace(/^\D+/, '') + '\u00a0场']
   if (p.length === 3 && p[2].startsWith('c')) return ['第\u00a0' + p[1].slice(1) + '\u00a0段', '第\u00a0' + p[2].slice(1) + '\u00a0镜']
   if (p.length === 2 && p[1].startsWith('g')) return ['第\u00a0' + p[1].slice(1) + '\u00a0段']
   return [scope === 'e1' ? '第\u00a01\u00a0集' : String(scope)]
 }
 const scopeName = scope => scopeParts(scope).join(' ')
 const scopeHtml = scope => { const p = scopeParts(scope); return p.length > 1 ? '<span class="up">' + esc(p.slice(0, -1).join(' ')) + '</span>' + esc(p[p.length - 1]) : esc(p[0]) }
-const KIND = { entity_brief: '外观设计', entity_desc: '出图描述', keyframe_desc: '关键帧描述', timeline: '时间轴', entity_image: '设定图', keyframe: '关键帧', audition: '试音', clip_draft: '草稿', cut_draft: '整集草稿', cut_final: '交付片' }
+const KIND = { entity_brief: '外观设计', entity_desc: '出图描述', blocking: '站位', keyframe_desc: '关键帧描述', timeline: '时间轴', entity_image: '设定图', keyframe: '关键帧', audition: '试音', clip_draft: '草稿', cut_draft: '整集草稿', cut_final: '交付片' }
 function kindLabel(kind, scope) {
   const p = String(scope).split('/')
   if (kind === 'entity_image' && p.length === 4) return p[1] === 'loc' ? '机位图' : p[3]
@@ -634,6 +635,7 @@ function mediaOf(a, r, eager) {
   if (a.media && a.mime === 'video/mp4') return '<div class="clip' + (a.timeline ? '' : ' solo') + '"><div class="well"><video id="v' + a.id + '" controls preload="metadata" src="' + media(a.media) + '"></video></div>' + (a.timeline ? tlTable(a.timeline, a.id, true) : '') + '</div>'
   if (a.media && a.mime && a.mime.startsWith('audio/')) return '<audio controls src="' + media(a.media) + '"></audio>'
   if (a.kind === 'timeline') return tlTable(p, a.id, false)
+  if (a.reading) return (a.still ? '<div class="well">' + zimg(a.still, scopeName(r.scope) + ' 的主图', 'wide', eager) + '</div>' : '') + '<div class="reading"><div>' + esc(a.reading) + '</div></div>'
   if (p.text && !a.media) return '<div class="reading"><div>' + esc(p.text) + '</div></div>'
   return ''
 }

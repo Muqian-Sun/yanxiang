@@ -110,3 +110,26 @@ test('a segment that crosses locations must say where each shot is, and only amo
   const parsed = CARDS.timeline!.schema!.parse({ ...at(), cuts: at().cuts.map(c => ({ ...c, location: '' })), fight: false }) as { cuts: { location?: string }[] }
   expect(parsed.cuts[0]!.location).toBeUndefined()
 })
+
+test('a staging is sent back when a seat holds two people at once, someone comes on with no place, or a name, place or beat is made up', () => {
+  const data = { beats: ['b1', 'b2', 'b3'], first: { 周管事: 'b1', 陆沉: 'b1', 沈少主: 'b3' } }
+  const spots = [{ name: '高背椅', kind: '座位', where: '桌后正中，主图画面中央' }, { name: '方凳', kind: '座位', where: '桌子右端，主图画面右侧' }, { name: '桌前', kind: '站位', where: '桌子靠镜头一侧，主图画面下方' }, { name: '门口', kind: '出入口', where: '主图画框下沿外' }]
+  const at = (name: string, from: string, spot: string) => ({ name, from, spot, pose: '坐着', how: '开场就在' })
+  const good = [at('周管事', 'b1', '方凳'), at('陆沉', 'b1', '桌前'), at('沈少主', 'b3', '高背椅')]
+  expect(check('blocking', { spots, people: good }, data)).toEqual([])
+  // 周管事 moves to the chair at b2, then 沈少主 sits in it at b3 while he is still there.
+  expect(check('blocking', { spots, people: [...good.slice(0, 2), at('周管事', 'b2', '高背椅'), good[2]] }, data)).toEqual(['一个座位同一时刻只坐一个人：b3 的高背椅坐了周管事、沈少主'])
+  expect(check('blocking', { spots, people: good.slice(0, 2) }, data)).toEqual(['这些人到出场的那一拍还没有位置：沈少主（b3 出场）'])
+  expect(check('blocking', { spots, people: [...good.slice(0, 2), at('沈少主', 'b4', '高背椅')] }, data)).toEqual([
+    'from 要写这一场的拍号（b1、b2、b3），这些不是：沈少主的「b4」',
+    '这些人到出场的那一拍还没有位置：沈少主（b3 出场）',
+  ])
+  expect(check('blocking', { spots, people: [...good, at('随侍', 'b1', '桌前'), at('陆沉', 'b2', '窗下')] }, data)).toEqual([
+    '这些人不在这一场：随侍；name 只能写 周管事、陆沉、沈少主',
+    'spot 要照抄 spots 里的名字，这些没有：陆沉（b2）的「窗下」',
+  ])
+  expect(check('blocking', { spots: [...spots, spots[0]], people: good }, data)).toEqual(['位置的名字重复：高背椅'])
+  // Directions are the main picture's; 「东西」 meaning things is not a direction.
+  expect(check('blocking', { spots, people: [...good.slice(0, 2), { ...good[2]!, how: '放下东西，从门口绕到桌后' }] }, data)).toEqual([])
+  expect(check('blocking', { spots: [{ ...spots[0]!, where: '桌后正中，背靠北墙' }, ...spots.slice(1)], people: [...good.slice(0, 2), { ...good[2]!, pose: '坐着，面朝南' }] }, data)).toEqual(['方位按主图画面写上下左右，不用东南西北，名字里也不用；这些词要换掉：北墙、南。对照主图换成画面上的说法，例如门在画面下方就写「门口」，桌子靠画面右边的一头写「桌子右端」，桌子离镜头远的一侧写「桌后」'])
+})
