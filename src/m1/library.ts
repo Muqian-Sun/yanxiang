@@ -3,7 +3,7 @@
  * each artifact (the locked one, else the newest draft or stale one), grouped the way the creator
  * thinks of them: people, places, props, the script, the storyboard, the videos.
  */
-import { DERIVED, episode, lockedImage, names, scopeOf } from '../pipeline/entities.js'
+import { costumesOf, derivedOf, episode, lockedImage, looks, names, parse, personOf, scopeOf } from '../pipeline/entities.js'
 import { cutScope, planOf, segmentScope } from '../pipeline/storyboard.js'
 import type { Artifact, Store } from '../store/store.js'
 import { MAIN_VIEW, type TimelineT, type ViewGroupsT } from '../tasks.js'
@@ -20,12 +20,24 @@ function item(store: Store, a: Artifact | undefined): Item | null {
 const current = (store: Store, kind: string, scope: string) => item(store, store.locked(kind, scope) ?? store.latest(kind, scope, ['draft', 'stale']))
 const picture = (store: Store, scope: string) => item(store, lockedImage(store, scope)?.image ?? store.latest('entity_image', scope, ['draft', 'stale']))
 
+/** A person's pictures beside the opening portrait: each later costume, and what is derived from every look. */
+function personExtras(store: Store, name: string) {
+  const person = personOf(store, name)
+  return looks(person).flatMap(look => {
+    const costume = costumesOf(person).find(c => c.name === parse(look).costume)
+    return [
+      ...(costume ? [{ label: `造型：${costume.name}`, note: `从 ${costume.from} 起穿`, image: picture(store, look) }] : []),
+      ...derivedOf(person, look).map(d => ({ label: costume ? `${costume.name}·${d}` : d, image: picture(store, `${look}/${d}`) })),
+    ]
+  })
+}
+
 export function library(store: Store) {
   const ep = episode(store)
   const entity = (kind: 'char' | 'loc' | 'prop') => names(store, kind).map(name => {
     const scope = scopeOf(kind, name)
     const extras = kind === 'char'
-      ? Object.keys(DERIVED).map(d => ({ label: d, image: picture(store, `${scope}/${d}`) }))
+      ? personExtras(store, name)
       : kind === 'loc'
         ? ((store.locked('view_plan', scope)?.payload as ViewGroupsT | undefined)?.views ?? []).filter(v => v.name !== MAIN_VIEW).map(v => ({ label: v.name, note: v.camera, image: picture(store, `${scope}/${v.name}`) }))
         : []

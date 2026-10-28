@@ -8,7 +8,8 @@ import { MAX_AUDIOS, MAX_IMAGES } from './workflow.js'
 
 export type Bound =
   | { kind: 'keyframe'; cut: number; at: number; media: number }
-  | { kind: 'portrait'; name: string; anchors: string; media: number; turnaround?: boolean }
+  /** `outfit`: the costume's flat lay, for a name standing for that many people; `costume`: a costume changed into. */
+  | { kind: 'portrait'; name: string; anchors: string; media: number; turnaround?: boolean; outfit?: number; costume?: string }
   | { kind: 'view'; label: string; cuts: number[]; media: number }
   | { kind: 'prop'; name: string; anchors: string; media: number }
 export type Voice = { name: string; media: number }
@@ -63,7 +64,8 @@ export function compile(p: SegmentPrompt): string {
     ...p.bound.map(b => {
       const t = pictures.get(b)!
       if (b.kind === 'keyframe') return `${t} 是 [Shot ${b.cut}] 开场那一刻的画面。`
-      if (b.kind === 'portrait') return `${t} 是${b.name}${b.turnaround ? '的三视图（正面、侧面、背面）' : ''}，${b.anchors ? `锚点：${b.anchors}` : '外观照这张图'}。`
+      if (b.kind === 'portrait' && b.outfit) return `${t} 是${b.name}穿的这一套服装，画面里 ${b.outfit} 个${b.name}都穿它，脸和身形各不相同。`
+      if (b.kind === 'portrait') return `${t} 是${b.name}${b.costume ? `（${b.costume}）` : ''}${b.turnaround ? '的三视图（正面、侧面、背面）' : ''}，${b.anchors ? `锚点：${b.anchors}` : '外观照这张图'}。`
       if (b.kind === 'prop') return `${t} 是${b.name}，${b.anchors ? `锚点：${b.anchors}` : '形制照这张图'}。`
       return `${t} 是${b.label}。`
     }),
@@ -77,6 +79,7 @@ export function compile(p: SegmentPrompt): string {
     ...p.bound.map(b => {
       const t = pictures.get(b)!
       if (b.kind === 'keyframe') return `${t}（[Shot ${b.cut}] 开场画面）：fully_preserved - 只负责这一切开场的构图、站位和姿态。`
+      if (b.kind === 'portrait' && b.outfit) return `${t}（出现在 ${shotsWith(b.name).join('、') || '画面里'}）：partially_preserved - 只负责${b.name}的衣服、鞋和佩物；不负责脸、发型和身形，${b.outfit} 个人各长各的，也不继承平铺的摆法。`
       if (b.kind === 'portrait') return `${t}（出现在 ${shotsWith(b.name).join('、') || '画面里'}）：partially_preserved - 只负责${b.name}的脸、发型、身形和这套造型；不负责构图、动作和表情，也不继承${b.turnaround ? '三视图的并排站姿' : '定妆照的正面居中和直视镜头'}。`
       if (b.kind === 'prop') return `${t}（出现在 ${shotsWith(b.name).join('、') || '画面里'}）：partially_preserved - 只负责${b.name}的形状和结构，不负责它在谁手里、是什么状态。`
       return `${t}（${b.cuts.map(c => `[Shot ${c}]`).join('、')}）：weak_reference - 只负责空间和陈设方位。`

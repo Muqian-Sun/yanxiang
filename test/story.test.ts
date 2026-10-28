@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
-import { CARDS, screenplay, setupSection, voicedPerBeat } from '../src/tasks.js'
+import { CARDS, screenplay, setupSection, voicedPerBeat, type ScriptT } from '../src/tasks.js'
 
-const check = (name: string, out: unknown, data?: unknown) => CARDS[name]!.checks!(out as never, data as never)
+/** A structured output that parses is checked with its defaults filled, as the runner does; one that does not is checked as it is. */
+const check = (name: string, out: unknown, data?: unknown) => {
+  const parsed = CARDS[name]!.schema?.safeParse(out)
+  return CARDS[name]!.checks!((parsed?.success ? parsed.data : out) as never, data as never)
+}
 
 const WRITTEN = [
   '场1 内 · 锁魂洞 · 子夜，洞外山风不停',
@@ -64,6 +68,28 @@ test('an extraction that changes a word of the dialogue or loses a scene is sent
   expect(check('script-extract', extracted('那就在你心里。', '锁魂洞外', ' '), data)).toEqual(['这些人物没写性别或外观年龄：柳含烟、谢无咎；剧本没写明的，按身份和称呼推一个，例如「看起来二十出头」'])
 })
 
+test('a costume change must name a beat of the script, later than the one before', () => {
+  const { scenes } = screenplay(WRITTEN)
+  const data = { min: 96, max: 144, lines: scenes.flatMap(s => s.lines), locations: scenes.map(s => s.location) }
+  const wearing = (costumes: { name: string; from: string }[]) => {
+    const out = extracted('那就在你心里。')
+    return { ...out, roster: { ...out.roster, characters: out.roster.characters.map(c => (c.name === '柳含烟' ? { ...c, costumes } : c)) } }
+  }
+  expect(check('script-extract', wearing([{ name: '嫁衣', from: 'b2' }]), data)).toEqual([])
+  expect(check('script-extract', wearing([{ name: '嫁衣', from: 'b9' }]), data)).toEqual(['柳含烟的换装写了剧本里没有的拍：嫁衣（b9）；from 写他第一次穿这套的那一拍的 id'])
+  expect(check('script-extract', wearing([{ name: '嫁衣', from: 'b2' }, { name: '素服', from: 'b1' }]), data)).toEqual(['柳含烟的换装要按穿上的先后排，from 一个比一个靠后'])
+  expect(check('script-extract', wearing([{ name: '嫁衣', from: 'b1' }, { name: '嫁衣', from: 'b2' }]), data)).toEqual(['柳含烟的造型名重复或带「/」：嫁衣'])
+  // Stored without the new fields, a roster reads as one person in one costume.
+  expect((CARDS['script-extract']!.schema!.parse(extracted('那就在你心里。')) as ScriptT).roster.characters[0]).toMatchObject({ count: 1, costumes: [] })
+})
+
+test('a segment may not run across a costume change', () => {
+  const data = { beats: ['b1', 'b2', 'b3'], voiced: {}, min: 1, max: 100, locations: ['锁魂洞'], changes: [{ name: '柳含烟', costume: '嫁衣', from: 'b2' }] }
+  const plan = (...groups: string[][]) => ({ segments: groups.map((beats, i) => ({ id: `g${i + 1}`, beats, seconds: 8, location: '锁魂洞', continues: false, summary: '对峙' })), overflow: [] })
+  expect(check('segment-plan', plan(['b1'], ['b2', 'b3']), data)).toEqual([])
+  expect(check('segment-plan', plan(['b1', 'b2'], ['b3']), data)).toEqual(['g1 跨过了换装：柳含烟从 b2 起换上嫁衣，b2 要作为一段的第一拍'])
+})
+
 const SETUP = '世界一角：青冥宗\n规则：同心印\n人物：\n谢无咎：剑修\n柳含烟：宗主\n真相：五百年前\n地点：\n锁魂洞：青冥宗禁地\n独有时刻：膝印'
 
 test('an episode setup must have every item, and an item is read up to the next one', () => {
@@ -105,7 +131,7 @@ test('a segment too short to speak its lines is sent back', () => {
   const beats = [{ id: 'b1', lines: [{ text: '五百年了，你还认得这张脸？' }] }, { id: 'b2', lines: [{ text: '认得。' }, { text: '那就跪下。' }] }]
   const voiced = voicedPerBeat(beats)
   expect(voiced).toEqual({ b1: 11, b2: 6 })
-  const data = { beats: ['b1', 'b2'], voiced, min: 1, max: 100, locations: ['锁魂洞'] }
+  const data = { beats: ['b1', 'b2'], voiced, min: 1, max: 100, locations: ['锁魂洞'], changes: [] }
   const plan = (seconds: number) => ({ segments: [{ id: 'g1', beats: ['b1', 'b2'], seconds, location: '锁魂洞', continues: false, summary: '对峙' }], overflow: [] })
   expect(check('segment-plan', plan(6), data)).toEqual([])
   expect(check('segment-plan', plan(5), data)).toEqual(['g1 里的台词有 17 个字，至少要 6 秒才说得完，现在只有 5 秒；拉长这一段，或者把拍分到相邻的段'])

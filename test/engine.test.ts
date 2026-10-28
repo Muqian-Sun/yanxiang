@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImageRequest } from '../src/jobs/images.js'
 import { Engine, type NodeDef, type TextRunner } from '../src/pipeline/engine.js'
-import { ENTITY_NODES, type EntityEnv } from '../src/pipeline/entities.js'
+import { library } from '../src/m1/library.js'
+import { context } from '../src/m1/web.js'
+import { ENTITY_NODES, lockedImage, text, type EntityEnv } from '../src/pipeline/entities.js'
 import { loadPlugins } from '../src/plugins.js'
 import type { Section } from '../src/runner.js'
 import { Store } from '../src/store/store.js'
@@ -22,12 +24,12 @@ const ROSTER = {
   props: [{ name: '石台', holder: '固定在洞中央', beats: ['b1'] }, { name: '婚书', holder: '柳含烟藏在袖中', beats: ['b2'] }],
 }
 
-function project() {
+function project(roster: object = ROSTER) {
   const store = new Store(mkdtempSync(join(tmpdir(), 'yx-engine-')))
   store.createProject({ name: '样片', entry: 'script', style: '3d-guoman', genre: 'xianxia', seconds_min: 45, seconds_max: 60, delivery: '1080p' })
   store.addArtifact({ kind: 'style_ref', scope: 'p', payload: {}, status: 'locked', created_by: 'program' })
   const script = store.addArtifact({ kind: 'script', scope: 'e1', payload: SCRIPT, status: 'locked', created_by: 'user' })
-  store.addArtifact({ kind: 'roster', scope: 'e1', payload: ROSTER, inputs: [script.id], status: 'locked', created_by: 'user' })
+  store.addArtifact({ kind: 'roster', scope: 'e1', payload: roster, inputs: [script.id], status: 'locked', created_by: 'user' })
   return store
 }
 
@@ -38,7 +40,8 @@ function fakeText(calls: { task: string; sections: Section[]; data?: unknown }[]
     // A creator's instruction changes the design; the note for an upstream change alone does not. A description follows its brief.
     const asked = sections.find(s => s.title === '创作者的修改意见')?.body
     const change = asked && !asked.startsWith('它用到的上游') ? `\n修改：${asked}` : ''
-    const output = card.name === 'character-design' ? `脸型：长脸\n身高：比门框矮半头\n主色：白\n区分：散发${change}` : card.name === 'location-design' ? `陈设：石台居中\n道具位置：石台在洞中央${change}` : card.name === 'prop-design' ? `形制：长方${change}` : `${card.name}：${sections[0]!.body}`
+    const costume = sections.find(s => s.title === '这一套造型')?.body
+    const output = card.name === 'character-design' ? `脸型：长脸\n身高：比门框矮半头\n主色：白\n区分：散发${costume ? `\n造型：${costume}` : ''}${change}` : card.name === 'location-design' ? `陈设：石台居中\n道具位置：石台在洞中央${change}` : card.name === 'prop-design' ? `形制：长方${change}` : `${card.name}：${sections[0]!.body}`
     return { output, raw: output, attempts: [], system: '', user: '', promptVersion: 'v', model: 'fake' }
   }
 }
@@ -180,6 +183,70 @@ test('picking a portrait leads to its three-view and face close-up', async () =>
   const turnaround = store.latest('entity_image', 'e1/char/谢无咎/三视图')!
   expect(turnaround.status).toBe('draft')
   expect((turnaround.payload as { prompt: string }).prompt).toContain('图 1 是谢无咎的定妆照。')
+})
+
+const derive = ENTITY_NODES.find(n => n.name === 'derive')!
+const prompt = (a: { payload: unknown }) => (a.payload as { prompt: string }).prompt
+
+test('a later costume is designed from the opening one and drawn from its portrait; only its three-view is derived', async () => {
+  const costume = 'e1/char/柳含烟/造型/嫁衣'
+  const store = project({ ...ROSTER, characters: [person('谢无咎'), { ...person('柳含烟'), costumes: [{ name: '嫁衣', from: 'b2' }] }] })
+  const calls: { task: string; sections: Section[]; data?: unknown }[] = []
+  const images = fakeImages()
+  const e = engine(store, fakeText(calls), images)
+  expect(derive.scopes(store)).toEqual(['e1/char/谢无咎/三视图', 'e1/char/谢无咎/脸部特写', 'e1/char/柳含烟/三视图', 'e1/char/柳含烟/脸部特写', `${costume}/三视图`])
+  for (let i = 0; i < 3; i++) await round(e)
+  // It waits for the opening design to be approved, not just written, then copies it.
+  expect(store.latest('entity_brief', 'e1/char/柳含烟')!.status).toBe('draft')
+  expect(store.latest('entity_brief', costume)).toBeUndefined()
+  approveAll(e, store, 4)
+  await round(e)
+  const design = calls.find(c => c.task === 'character-design' && c.sections.some(s => s.title === '这一套造型'))!
+  expect(design.sections.map(s => s.title)).toEqual(['人物卡', '剧本里写到他外貌的原句', '这一套造型', '穿这套的剧情', '他开场那一套', '和他有关的道具', '本集其他人的道具'])
+  expect(design.sections[2]!.body).toBe('嫁衣：从 b2 起穿，一直穿到本集结束')
+  expect(design.sections[3]!.body).toStartWith('b2（封剑洞，约 5 秒）柳含烟抽出婚书。')
+  expect(design.sections[4]!.body).toBe(text(store.locked('entity_brief', 'e1/char/柳含烟')!))
+  expect(design.data).toEqual({ others: [{ name: '石台', holder: '固定在洞中央' }] })
+
+  // Its portrait waits for the opening portrait, and is drawn from it.
+  store.grant('e1', 'image', 100)
+  for (let i = 0; i < 3; i++) {
+    await round(e)
+    approveAll(e, store, 4)
+  }
+  expect(store.locked('entity_desc', costume)).toBeTruthy()
+  expect(store.latest('entity_image', costume)).toBeUndefined()
+  pickFirst(e, store)
+  await round(e)
+  const drawn = store.artifacts('entity_image', costume, ['draft'])
+  expect(drawn).toHaveLength(2)
+  expect(prompt(drawn[0]!)).toContain('图 1 是柳含烟的定妆照。\n\n柳含烟换上另一套造型：脸、五官、肤色、身形和身高都和柳含烟的定妆照一致')
+  expect(prompt(drawn[0]!)).toContain(text(store.locked('entity_desc', costume)!))
+  const opening = store.mediaPath(lockedImage(store, 'e1/char/柳含烟')!.image.media_id!)
+  expect(images.refs.filter((_, i) => images.submits[i]!.includes('换上另一套造型'))).toEqual([[opening], [opening]])
+  // The review shows the costume's own design; the library lists the costume and its three-view.
+  expect(context(store, drawn[0]!)[0]).toEqual({ title: '外观要点', body: text(store.locked('entity_brief', costume)!) })
+  expect(library(store).characters.find(c => c.name === '柳含烟')!.extras.map(x => x.label)).toEqual(['三视图', '脸部特写', '造型：嫁衣', '嫁衣·三视图'])
+  pickFirst(e, store)
+  await round(e)
+  expect(prompt(store.latest('entity_image', `${costume}/三视图`)!)).toContain('图 1 是柳含烟（嫁衣）的定妆照。')
+})
+
+test('a name for several people gets a flat lay of the costume instead of a three-view and close-up', async () => {
+  const store = project({ ...ROSTER, characters: [person('谢无咎'), { ...person('柳含烟'), count: 2 }] })
+  const e = engine(store)
+  expect(derive.scopes(store)).toEqual(['e1/char/谢无咎/三视图', 'e1/char/谢无咎/脸部特写', 'e1/char/柳含烟/服装平铺'])
+  store.grant('e1', 'image', 100)
+  for (let i = 0; i < 4; i++) {
+    await round(e)
+    approveAll(e, store, 4)
+  }
+  pickFirst(e, store)
+  await round(e)
+  const flat = store.latest('entity_image', 'e1/char/柳含烟/服装平铺')!
+  expect(prompt(flat)).toContain('图 1 是柳含烟的定妆照。')
+  expect(prompt(flat)).toContain('服装平铺：把参考图里这个人身上的整套衣服')
+  expect(store.latest('entity_image', 'e1/char/柳含烟/三视图')).toBeUndefined()
 })
 
 test('a revise from the review reruns with the previous version and the instruction', async () => {

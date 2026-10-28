@@ -13,7 +13,7 @@ import { auditionPrompt, chooseVoices, choosePictures, compile, type Bound } fro
 import { align, ass, type Cue } from '../video/subtitles.js'
 import { FPS } from '../video/workflow.js'
 import type { Env, NodeDef, Ready } from './engine.js'
-import { EPISODE, episode, lockedImage, names, pick, scopeOf, text, type EntityEnv } from './entities.js'
+import { EPISODE, episode, figureAt, lockedImage, names, pick, scopeOf, text, type EntityEnv } from './entities.js'
 import { cutId, cutLocation, planOf, segmentScope, stateBefore, viewOf } from './storyboard.js'
 
 type Segment = PlanT['segments'][number]
@@ -137,7 +137,10 @@ function segmentInputs(store: Store, segment: Segment) {
   const props = [...new Set(tl.cuts.flatMap(c => c.present.props))]
   // Seen from behind anywhere in the segment: the turnaround stands for them (it has the front too, so it takes no extra slot).
   const backs = new Set(tl.cuts.flatMap(c => c.present.backs ?? []))
-  const portraits = present.map(n => ({ name: n, turnaround: backs.has(n), img: lockedImage(store, backs.has(n) ? `${scopeOf('char', n)}/三视图` : scopeOf('char', n)) }))
+  const portraits = present.map(n => {
+    const f = figureAt(store, n, segment.beats[0]!, backs.has(n))
+    return { name: n, look: f.look, turnaround: f.turnaround, outfit: f.outfit, costume: f.costume, img: f.picture }
+  })
   const sheets = props.map(n => ({ name: n, img: lockedImage(store, scopeOf('prop', n)) }))
   // A continuing segment's first cut is carried by the replayed tail, so it has no keyframe and no camera group.
   const views = keyframes.map(({ cut }) => ({ cut: cut.index, view: viewOf(store, cutLocation(segment, cut), cutId(segment.id, cut.index)) }))
@@ -145,7 +148,7 @@ function segmentInputs(store: Store, segment: Segment) {
   const speaking = [...new Set(tl.lines.map(l => l.speaker))]
   const voices = speaking.map(n => ({ name: n, voice: store.locked('voice', scopeOf('char', n)) }))
   if (voices.some(v => !v.voice)) return undefined
-  return { timeline, tl, keyframes: keyframes.map(k => ({ cut: k.cut, kf: k.kf! })), portraits: portraits.map(p => ({ name: p.name, turnaround: p.turnaround, img: p.img! })), sheets: sheets.map(s => ({ name: s.name, img: s.img! })), views: views.map(v => ({ cut: v.cut, view: v.view! })), voices: voices.map(v => ({ name: v.name, voice: v.voice! })) }
+  return { timeline, tl, keyframes: keyframes.map(k => ({ cut: k.cut, kf: k.kf! })), portraits: portraits.map(p => ({ ...p, img: p.img! })), sheets: sheets.map(s => ({ name: s.name, img: s.img! })), views: views.map(v => ({ cut: v.cut, view: v.view! })), voices: voices.map(v => ({ name: v.name, voice: v.voice! })) }
 }
 
 type Made = NonNullable<ReturnType<typeof segmentInputs>>
@@ -161,7 +164,7 @@ function references(store: Store, made: Made) {
   }
   const wanted: Bound[] = [
     ...made.keyframes.map(k => ({ kind: 'keyframe' as const, cut: k.cut.index, at: k.cut.start, media: k.kf.media_id! })),
-    ...made.portraits.map(p => ({ kind: 'portrait' as const, name: p.name, anchors: anchors(store, scopeOf('char', p.name)), media: mediaOfLock(p.img.lock), turnaround: p.turnaround })),
+    ...made.portraits.map(p => ({ kind: 'portrait' as const, name: p.name, anchors: anchors(store, p.look), media: mediaOfLock(p.img.lock), turnaround: p.turnaround, outfit: p.outfit, costume: p.costume })),
     ...made.sheets.map(s => ({ kind: 'prop' as const, name: s.name, anchors: anchors(store, scopeOf('prop', s.name)), media: mediaOfLock(s.img.lock) })),
     ...[...viewPictures.values()].map(v => ({ kind: 'view' as const, ...v })),
   ]
@@ -173,7 +176,7 @@ function references(store: Store, made: Made) {
   return { ...pictures, voices: voices.voices, droppedVoices: voices.dropped }
 }
 
-const label = (b: Bound) => (b.kind === 'keyframe' ? `第 ${b.cut} 切的关键帧` : b.kind === 'portrait' ? `${b.name}的${b.turnaround ? '三视图' : '定妆照'}` : b.kind === 'prop' ? `${b.name}的设定图` : b.label)
+const label = (b: Bound) => (b.kind === 'keyframe' ? `第 ${b.cut} 切的关键帧` : b.kind === 'portrait' ? `${b.name}${b.costume ? `（${b.costume}）` : ''}的${b.outfit ? '服装平铺' : b.turnaround ? '三视图' : '定妆照'}` : b.kind === 'prop' ? `${b.name}的设定图` : b.label)
 
 /** The request for a segment, draft or refine: same prompt, references and seed; only the guide clip and the refine pass differ. */
 function segmentRequest(env: EntityEnv, segment: Segment, made: Made, nodeRunId: number, seed: number, refine: boolean, guide: number | undefined) {

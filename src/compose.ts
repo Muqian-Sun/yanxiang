@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Plugin, PluginError } from './plugins.js'
 
-export const IMAGE_TYPES = ['portrait', 'turnaround', 'face', 'prop-sheet', 'location', 'location-view', 'keyframe'] as const
+export const IMAGE_TYPES = ['portrait', 'turnaround', 'face', 'prop-sheet', 'location', 'location-view', 'keyframe', 'outfit'] as const
 export type ImageType = (typeof IMAGE_TYPES)[number]
 
 /**

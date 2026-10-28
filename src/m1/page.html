@@ -942,7 +942,7 @@ function nav() {
     '<div class="grp">已有</div>' + Object.entries(LIB).map(([k, [v, ic]]) => item(k, k, v, ic)).join('') +
     '<div class="grp">流程</div>' + item('progress', 'progress', '进度', 'pulse', failed, 'bad')
 }
-const NODE = { image: '定妆照', derive: '三视图与特写', view: '机位图', keyframe: '关键帧', audition: '试音', draft: '草稿', refine: '精修' }
+const NODE = { image: '定妆照', derive: '三视图、特写与服装平铺', view: '机位图', keyframe: '关键帧', audition: '试音', draft: '草稿', refine: '精修' }
 function batch(pool) {
   const list = S.pending.filter(p => !p.gpu && p.pool === pool)
   const n = list.reduce((x, p) => x + p.count, 0)

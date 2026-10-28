@@ -65,6 +65,18 @@ test('the compiled prompt has H3\'s six sections, binds every mention, and quiet
   expect(compile({ style: '', summary: '', timeline: { ...TL, fight: true }, bound: BOUND, voices: [], voiceOver: [], states: [], continues: false, trigger: 'wushu_action,' }).startsWith('wushu_action,\n\nsubject_definitions:')).toBe(true)
 })
 
+test('a flat lay binds only the clothes of a group; a later costume is named with its person', () => {
+  const bound: Bound[] = [
+    { kind: 'portrait', name: '谢无咎', anchors: '凤冠', media: 2, costume: '嫁衣' },
+    { kind: 'portrait', name: '柳含烟', anchors: '', media: 3, outfit: 2 },
+  ]
+  const p = compile({ style: '', summary: '', timeline: TL, bound, voices: [], voiceOver: [], states: [], continues: false })
+  expect(p).toContain('<Picture 1> 是谢无咎（嫁衣），锚点：凤冠。')
+  expect(p).toContain('只负责谢无咎的脸、发型、身形和这套造型')
+  expect(p).toContain('<Picture 2> 是柳含烟穿的这一套服装，画面里 2 个柳含烟都穿它，脸和身形各不相同。')
+  expect(p).toContain('<Picture 2>（出现在 [Shot 2]）：partially_preserved - 只负责柳含烟的衣服、鞋和佩物；不负责脸、发型和身形，2 个人各长各的，也不继承平铺的摆法。')
+})
+
 test('past nine pictures the keyframes stay, then the main people, props, the place, the others; past three voices the busiest stay', () => {
   const kf = Array.from({ length: 5 }, (_, i): Bound => ({ kind: 'keyframe', cut: i + 1, at: i * 2, media: i }))
   const wanted: Bound[] = [...kf, { kind: 'portrait', name: '甲', anchors: '', media: 10 }, { kind: 'portrait', name: '乙', anchors: '', media: 11 }, { kind: 'prop', name: '剑', anchors: '', media: 12 }, { kind: 'view', label: '主图', cuts: [1], media: 13 }, { kind: 'view', label: '反打', cuts: [2], media: 14 }]
@@ -337,6 +349,26 @@ test('from locked keyframes to the delivered episode: auditions, drafts with the
 test('every video node is free unless it generates: auditions, drafts and refines need a grant, the rest do not', () => {
   const paid = (VIDEO_NODES as NodeDef[]).filter(n => n.paid).map(n => n.name)
   expect(paid).toEqual(['audition', 'draft', 'refine'])
+})
+
+test('a segment\'s video binds the flat lay for a name standing for several people, not the portrait', () => {
+  const store = chainProject()
+  const roster = { ...ROSTER, characters: [{ ...ROSTER.characters[0]!, count: 2 }, ROSTER.characters[1]!] }
+  store.db.prepare('UPDATE artifact SET payload = ? WHERE id = ?').run(JSON.stringify(roster), store.locked('roster', 'e1')!.id)
+  const picture = (kind: string, scope: string) => store.addArtifact({ kind, scope, payload: {}, media_id: store.putMedia(new TextEncoder().encode(scope), 'image/png'), status: 'locked', created_by: 'user' })
+  const flat = picture('entity_image', 'e1/char/谢无咎/服装平铺')
+  const flatLock = store.addArtifact({ kind: 'entity_lock', scope: 'e1/char/谢无咎/服装平铺', payload: { image_id: flat.id }, inputs: [flat.id], status: 'locked', created_by: 'user' })
+  store.addArtifact({ kind: 'segment_plan', scope: 'e1', payload: PLAN, status: 'locked', created_by: 'model' })
+  store.addArtifact({ kind: 'timeline', scope: 'e1/g1', payload: TL1, status: 'locked', created_by: 'model' })
+  store.addArtifact({ kind: 'view_plan', scope: 'e1/loc/封剑洞', payload: { views: [{ name: '主视角', camera: '', cuts: ['g1/c1', 'g1/c2'] }] }, status: 'locked', created_by: 'model' })
+  picture('keyframe', 'e1/g1/c1')
+  picture('keyframe', 'e1/g1/c2')
+  store.addArtifact({ kind: 'voice', scope: 'e1/char/柳含烟', payload: { from: 0, to: 2 }, media_id: store.putMedia(new TextEncoder().encode('voice'), 'audio/wav'), status: 'locked', created_by: 'program' })
+  const ready = (VIDEO_NODES as NodeDef[]).find(n => n.name === 'draft')!.ready(store, 'e1/g1')
+  expect(ready.ok).toBe(true)
+  const inputs = (ready as { inputs: number[] }).inputs
+  expect(inputs).toContain(flatLock.id)
+  expect(inputs).not.toContain(store.locked('entity_lock', 'e1/char/谢无咎')!.id)
 })
 
 test('when the GPU drops mid-job the job is kept, and a retry resumes it without submitting again', async () => {

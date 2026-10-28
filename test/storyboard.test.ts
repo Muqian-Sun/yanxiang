@@ -10,7 +10,7 @@ import { STORYBOARD_NODES } from '../src/pipeline/storyboard.js'
 import { loadPlugins } from '../src/plugins.js'
 import type { Section } from '../src/runner.js'
 import { Store } from '../src/store/store.js'
-import type { PlanT, TimelineT } from '../src/tasks.js'
+import type { PlanData, PlanT, TimelineT } from '../src/tasks.js'
 import type { ImageClient } from '../src/yir.js'
 
 const ROOT = join(import.meta.dir, '..')
@@ -220,6 +220,42 @@ test('cuts worded differently but from the same camera share one view picture; t
   expect(shown('e1/g1/c2')).toBe('没有变化，和锁定的图一样')
   const clip = store.addArtifact({ kind: 'clip_draft', scope: 'e1/g2', payload: {}, created_by: 'model' })
   expect(context(store, clip)).toEqual([{ title: '这一段开始时的状态', body: '锁链束住双腕\n婚书展开' }])
+})
+
+/** A locked picture at `scope`, as if ★5 were done. */
+function lockPicture(store: Store, scope: string) {
+  const img = store.addArtifact({ kind: 'entity_image', scope, payload: { job_id: 0, prompt: scope }, media_id: store.putMedia(new TextEncoder().encode(scope), 'image/png'), status: 'locked', created_by: 'user' })
+  store.addArtifact({ kind: 'entity_lock', scope, payload: { image_id: img.id }, inputs: [img.id], status: 'locked', created_by: 'user' })
+}
+
+test('a cut binds the costume worn through its segment, and a name for several people binds the flat lay', async () => {
+  const store = project()
+  const roster = { ...ROSTER, characters: [{ ...ROSTER.characters[0]!, count: 2 }, { ...ROSTER.characters[1]!, costumes: [{ name: '嫁衣', from: 'b3' }] }] }
+  store.db.prepare('UPDATE artifact SET payload = ? WHERE id = ?').run(JSON.stringify(roster), store.locked('roster', 'e1')!.id)
+  const costume = 'e1/char/柳含烟/造型/嫁衣'
+  store.addArtifact({ kind: 'entity_brief', scope: costume, payload: { text: '锚点：凤冠\n主色：大红' }, status: 'locked', created_by: 'user' })
+  store.addArtifact({ kind: 'entity_desc', scope: costume, payload: { text: '嫁衣描述' }, status: 'locked', created_by: 'user' })
+  lockPicture(store, costume)
+  lockPicture(store, 'e1/char/谢无咎/服装平铺')
+  const calls: { task: string; sections: Section[]; data?: unknown }[] = []
+  const e = engine(store, fakeText(calls))
+  await upToViews(e, store)
+  expect((calls.find(c => c.task === 'segment-plan')!.data as PlanData).changes).toEqual([{ name: '柳含烟', costume: '嫁衣', from: 'b3' }])
+  expect(calls.find(c => c.task === 'segment-plan')!.sections.find(s => s.title === '换装')!.body).toBe('柳含烟从 b3 起换上嫁衣')
+
+  store.grant('e1/loc/封剑洞', 'image', 1)
+  await round(e)
+  e.approve(store.openReviews().find(r => r.scope === 'e1/loc/封剑洞/侧面')!.id)
+  await round(e)
+  for (const cut of ['e1/g1/c1', 'e1/g1/c2', 'e1/g2/c2']) store.grant(cut, 'image', 1)
+  await round(e)
+  const prompt = (scope: string) => (store.latest('keyframe', scope)!.payload as { prompt: string }).prompt
+  expect(prompt('e1/g1/c1')).toContain('图 1 是谢无咎的服装平铺（2 个人都穿这一套，脸和身形各不相同）。')
+  // Before the change she wears the opening costume; the segment that starts at it binds the new one and its colours.
+  expect(prompt('e1/g1/c2')).toContain('图 2 是柳含烟的定妆照。')
+  expect(prompt('e1/g2/c2')).toContain('图 1 是柳含烟（嫁衣）的定妆照。')
+  const g2c2 = calls.filter(c => c.task === 'keyframe-desc').find(c => c.sections.find(s => s.title === '参考图')!.body.includes('嫁衣'))!
+  expect(g2c2.sections.find(s => s.title === '人物主色')!.body).toBe('柳含烟：大红')
 })
 
 test('a picture drawn earlier can be adopted for a view without drawing again', async () => {

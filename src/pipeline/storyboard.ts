@@ -2,10 +2,10 @@ import { imagePrompt } from '../compose.js'
 import { image } from '../jobs/images.js'
 import type { Section } from '../runner.js'
 import type { Artifact, Store } from '../store/store.js'
-import { CARDS, MAIN_VIEW, voicedPerBeat, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
+import { CARDS, costumeChanges, MAIN_VIEW, voicedPerBeat, type PlanData, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
 import type { NodeDef, Ready } from './engine.js'
 import {
-  EPISODE, episode, fmtBeats, imageParams, lockedImage, names, pick, revision, scopeOf, styleRefMedia, text,
+  EPISODE, episode, figureAt, fmtBeats, imageParams, lockedImage, lookAt, names, pick, revision, scopeOf, styleRefMedia, text,
   type EntityEnv,
 } from './entities.js'
 
@@ -110,15 +110,10 @@ export function segmentState(store: Store, scope: string): string[] | undefined 
   return segment && stateBefore(store, segment.beats[0]!)
 }
 
-/**
- * The picture that stands for a person in a cut: the turnaround when the cut shows their back
- * (creator, 2026-10-28: a back view must come from the turnaround), else the portrait.
- */
-export function figure(store: Store, cut: Cut, name: string) {
+/** The picture that stands for a person in a cut, in the costume worn through its segment. */
+export function figure(store: Store, segment: Segment, cut: Cut, name: string) {
   // Timelines written before backs existed (2026-10-28) are stored without it.
-  const back = (cut.present.backs ?? []).includes(name)
-  const scope = back ? `${scopeOf('char', name)}/三视图` : scopeOf('char', name)
-  return { label: back ? `${name}的三视图` : `${name}的定妆照`, picture: lockedImage(store, scope) }
+  return figureAt(store, name, segment.beats[0]!, (cut.present.backs ?? []).includes(name))
 }
 
 /** The camera position a cut was grouped into, and the picture standing for it once locked. */
@@ -150,16 +145,18 @@ const plan: NodeDef = {
     const ep = episode(store)!
     const project = store.project()
     const entities = [...names(store, 'char'), ...names(store, 'loc'), ...names(store, 'prop')]
+    const changes = costumeChanges(ep.roster)
     const result = await env.text({
       card: CARDS['segment-plan']!,
       sections: [
         { title: '剧本', body: fmtBeats(store, ep.beats.map(b => b.id)) },
         { title: '已定的人物、地点、道具', body: entities.join('、') },
         { title: '地点只能写这些', body: names(store, 'loc').join('、') },
+        { title: '换装', body: changes.map(c => `${c.name}从 ${c.from} 起换上${c.costume}`).join('\n') },
         { title: '单集时长', body: `${project.seconds_min}–${project.seconds_max} 秒` },
         ...revision(store, run, json),
       ],
-      data: { beats: ep.beats.map(b => b.id), voiced: voicedPerBeat(ep.beats), min: project.seconds_min, max: project.seconds_max, locations: names(store, 'loc') },
+      data: { beats: ep.beats.map(b => b.id), voiced: voicedPerBeat(ep.beats), min: project.seconds_min, max: project.seconds_max, locations: names(store, 'loc'), changes } satisfies PlanData,
       tag: `segment-plan-${scope}-${run.id}`,
       nodeRunId: run.id,
     })
@@ -315,7 +312,7 @@ const kfdesc: NodeDef = {
     const place = viewOf(store, cutLocation(at.segment, at.cut), at.id)
     if (!place?.picture) return { ok: false }
     const briefs = [
-      ...at.cut.present.characters.map(name => store.locked('entity_brief', scopeOf('char', name))),
+      ...at.cut.present.characters.map(name => store.locked('entity_brief', lookAt(store, name, at.segment.beats[0]!))),
       store.locked('entity_brief', scopeOf('loc', cutLocation(at.segment, at.cut))),
     ]
     if (briefs.some(b => !b)) return { ok: false }
@@ -327,12 +324,12 @@ const kfdesc: NodeDef = {
     const tl = timeline.payload as TimelineT
     const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
     const refs = [
-      ...cut.present.characters.map(name => figure(store, cut, name).label),
+      ...cut.present.characters.map(name => figure(store, segment, cut, name).label),
       viewOf(store, cutLocation(segment, cut), id)!.label,
       ...cut.present.props.map(name => `${name}的设定图`),
       '风格参考图',
     ].map((label, i) => `图 ${i + 1}：${label}`)
-    const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', scopeOf('char', name))!), '主色').replace('主色：', '')}`)
+    const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', lookAt(store, name, segment.beats[0]!))!), '主色').replace('主色：', '')}`)
     const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', cutLocation(segment, cut)))!), '陈设')
     const atCut = cutState(store, scope)!
     const result = await env.text({
@@ -366,7 +363,7 @@ const keyframe: NodeDef = {
     if (!desc || !at) return { ok: false }
     const style = store.locked('style_ref', 'p')
     const place = viewOf(store, cutLocation(at.segment, at.cut), at.id)
-    const chars = at.cut.present.characters.map(name => figure(store, at.cut, name).picture)
+    const chars = at.cut.present.characters.map(name => figure(store, at.segment, at.cut, name).picture)
     const props = at.cut.present.props.map(name => lockedImage(store, scopeOf('prop', name)))
     if (!style || !place?.picture || chars.some(c => !c) || props.some(p => !p)) return { ok: false }
     return { ok: true, inputs: [desc.id, place.picture.lock.id, style.id, ...chars.map(c => c!.lock.id), ...props.map(p => p!.lock.id)] }
@@ -378,7 +375,7 @@ const keyframe: NodeDef = {
     const chars = inputs.slice(3, 3 + cut.present.characters.length)
     const props = inputs.slice(3 + cut.present.characters.length)
     const refs = [
-      ...chars.map((lockId, i) => ({ label: figure(e.store, cut, cut.present.characters[i]!).label, media: mediaOf(lockId) })),
+      ...chars.map((lockId, i) => ({ label: figure(e.store, segment, cut, cut.present.characters[i]!).label, media: mediaOf(lockId) })),
       { label: viewOf(e.store, cutLocation(segment, cut), id)!.label, media: mediaOf(inputs[1]!) },
       ...props.map((lockId, i) => ({ label: `${cut.present.props[i]}的设定图`, media: mediaOf(lockId) })),
       { label: '风格参考图', media: styleRefMedia(e) },

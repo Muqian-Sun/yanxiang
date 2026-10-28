@@ -15,18 +15,28 @@ const TASK = { char: 'character-design', loc: 'location-design', prop: 'prop-des
 const DESC = { char: 'portrait-desc', loc: 'location-desc', prop: 'prop-desc' } as const
 const PICTURE: Record<Kind, ImageType> = { char: 'portrait', loc: 'location', prop: 'prop-sheet' }
 /** Aspect per kind of picture; guesses (a full figure is tall, sheets and scenes are wide). */
-const ASPECT: Record<ImageType, string> = { portrait: '2:3', turnaround: '16:9', face: '1:1', 'prop-sheet': '16:9', location: '16:9', 'location-view': '16:9', keyframe: '16:9' }
+const ASPECT: Record<ImageType, string> = { portrait: '2:3', turnaround: '16:9', face: '1:1', 'prop-sheet': '16:9', location: '16:9', 'location-view': '16:9', keyframe: '16:9', outfit: '16:9' }
 export const imageParams = (type: ImageType) => ({ resolution: '1K', quality: 'medium', n: 1, aspect_ratio: ASPECT[type] })
 /** Two candidates per root picture (design 06); a guess. */
 const CANDIDATES = 2
-export const DERIVED = { 三视图: 'turnaround', 脸部特写: 'face' } as const
+export const DERIVED = { 三视图: 'turnaround', 脸部特写: 'face', 服装平铺: 'outfit' } as const
+type Derived = keyof typeof DERIVED
 
 export type EntityEnv = Env & { style: Plugin }
 
 export const scopeOf = (kind: Kind, name: string) => `${EPISODE}/${kind}/${name}`
+const COSTUME = '造型'
+/** A costume changed into after the opening one: its own design and portrait, drawn from the opening portrait. */
+export const costumeScope = (name: string, costume: string) => `${scopeOf('char', name)}/${COSTUME}/${costume}`
 export const parse = (scope: string) => {
-  const [, kind, name, derived] = scope.split('/') as [string, Kind, string, string | undefined]
-  return { kind, name, derived }
+  const [, kind, name, ...rest] = scope.split('/') as [string, Kind, string, ...string[]]
+  const costume = kind === 'char' && rest[0] === COSTUME ? rest[1] : undefined
+  return { kind, name, costume, derived: costume ? rest[2] : rest[0] }
+}
+/** The scope whose design a picture was drawn from: the entity or the costume, without a derived picture or view. */
+export function designScope(scope: string) {
+  const { kind, name, costume } = parse(scope)
+  return costume ? costumeScope(name, costume) : scopeOf(kind, name)
 }
 export const text = (a: Artifact) => (a.payload as { text: string }).text
 export const lines = (t: string) => t.split('\n').map(l => l.trim()).filter(Boolean)
@@ -44,6 +54,50 @@ export function names(store: Store, kind: Kind): string[] {
   const ep = episode(store)
   if (!ep) return []
   return kind === 'char' ? ep.roster.characters.map(c => c.name) : kind === 'loc' ? ep.roster.locations.map(l => l.name) : ep.roster.props.map(p => p.name)
+}
+
+type Person = Roster['characters'][number]
+/** Rosters stored before 2026-10-28 have no count and no costumes. */
+export const headcount = (p: Person) => p.count ?? 1
+export const costumesOf = (p: Person) => p.costumes ?? []
+export const personOf = (store: Store, name: string) => episode(store)!.roster.characters.find(c => c.name === name)!
+const people = (store: Store) => episode(store)?.roster.characters ?? []
+/** The opening look and each costume changed into. */
+export const looks = (p: Person) => [scopeOf('char', p.name), ...costumesOf(p).map(c => costumeScope(p.name, c.name))]
+
+/**
+ * Pictures derived from a look. A name standing for several people is bound by its costume's flat
+ * lay only (review 01-14: a shared portrait brings one face to all of them). A later costume needs
+ * its three-view for backs; the face close-up is the opening one's.
+ */
+export function derivedOf(p: Person, look: string): Derived[] {
+  if (headcount(p) > 1) return ['服装平铺']
+  return parse(look).costume ? ['三视图'] : ['三视图', '脸部特写']
+}
+
+/** Beats a person is in: named in the action, speaking, or spoken of. */
+const appearsIn = (beat: { action: string; lines: { speaker: string; text: string }[] }, name: string) =>
+  beat.action.includes(name) || beat.lines.some(l => l.speaker === name || l.text.includes(name))
+
+/** The look a person wears at a beat: the last costume put on by then, else the opening one. */
+export function lookAt(store: Store, name: string, beatId: string): string {
+  const ids = episode(store)!.beats.map(b => b.id)
+  const worn = costumesOf(personOf(store, name)).filter(c => ids.indexOf(c.from) <= ids.indexOf(beatId)).at(-1)
+  return worn ? costumeScope(name, worn.name) : scopeOf('char', name)
+}
+
+/**
+ * The picture that stands for a person from a beat on, in the look worn then: a group's flat lay;
+ * else the turnaround when seen from behind (creator, 2026-10-28), else the portrait.
+ */
+export function figureAt(store: Store, name: string, beatId: string, back: boolean) {
+  const look = lookAt(store, name, beatId)
+  const count = headcount(personOf(store, name))
+  const { costume } = parse(look)
+  const as: Derived | undefined = count > 1 ? '服装平铺' : back ? '三视图' : undefined
+  const scope = as ? `${look}/${as}` : look
+  const label = count > 1 ? `${name}的服装平铺（${count} 个人都穿这一套，脸和身形各不相同）` : `${name}${costume ? `（${costume}）` : ''}的${back ? '三视图' : '定妆照'}`
+  return { look, scope, label, picture: lockedImage(store, scope), outfit: count > 1 ? count : undefined, turnaround: as === '三视图', costume }
 }
 
 export function fmtBeats(store: Store, ids: string[]) {
@@ -80,11 +134,16 @@ const brief: NodeDef = {
   pool: 'text',
   output: 'entity_brief',
   review: 4,
-  scopes: store => (['char', 'loc', 'prop'] as Kind[]).flatMap(kind => names(store, kind).map(name => scopeOf(kind, name))),
+  scopes: store => [...people(store).flatMap(looks), ...(['loc', 'prop'] as Kind[]).flatMap(kind => names(store, kind).map(name => scopeOf(kind, name)))],
   ready(store, scope): Ready {
     const ep = episode(store)
     if (!ep) return { ok: false }
-    const { kind, name } = parse(scope)
+    const { kind, name, costume } = parse(scope)
+    // A later costume copies the face and build of the opening design, once that is approved.
+    if (costume) {
+      const opening = store.locked('entity_brief', scopeOf('char', name))
+      return opening ? { ok: true, inputs: [ep.script.id, ep.rosterId, opening.id] } : { ok: false }
+    }
     // Each kind is designed in order, each seeing the ones before it; a location also waits for its props (lock order: props before locations).
     const before = names(store, kind).slice(0, names(store, kind).indexOf(name)).map(n => scopeOf(kind, n))
     const props = kind === 'loc' ? propsAt(store, name).map(p => scopeOf('prop', p.name)) : []
@@ -97,23 +156,44 @@ const brief: NodeDef = {
   async run(env, scope, run, inputs) {
     const { store } = env
     const ep = episode(store)!
-    const { kind, name } = parse(scope)
+    const { kind, name, costume } = parse(scope)
     const briefs = inputs.slice(2).map(id => store.artifact(id)).filter(a => a.kind === 'entity_brief')
     const earlier = briefs.filter(a => parse(a.scope).kind === kind)
     let sections: Section[]
     let data: CharacterData | undefined
     if (kind === 'char') {
-      const person = ep.roster.characters.find(c => c.name === name)!
+      const person = personOf(store, name)
       const others = ep.roster.props.filter(p => !p.holder.includes(name))
       data = { others: others.map(p => ({ name: p.name, holder: p.holder })) }
-      sections = [
+      const card = [
         { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
         { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
+      ]
+      const props = [
         // Names only: a holder is how the prop changes hands over the episode, which is no part of a costume.
         { title: '和他有关的道具', body: ep.roster.props.filter(p => p.holder.includes(name)).map(p => p.name).join('、') },
         { title: '本集其他人的道具', body: others.map(p => p.name).join('、') },
-        { title: '同集其他人物', body: earlier.map(a => `${parse(a.scope).name}：${[pick(text(a), '主色').replace('主色：', '主色 '), pick(text(a), '区分').replace('区分：', ''), pick(text(a), '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`).join('\n') },
       ]
+      if (costume) {
+        const all = costumesOf(person)
+        const index = all.findIndex(c => c.name === costume)
+        const ids = ep.beats.map(b => b.id)
+        const until = all[index + 1]?.from
+        const worn = ep.beats.slice(ids.indexOf(all[index]!.from), until ? ids.indexOf(until) : undefined).filter(b => appearsIn(b, name))
+        sections = [
+          ...card,
+          { title: '这一套造型', body: `${costume}：从 ${all[index]!.from} 起穿，${until ? `到 ${until} 换下` : '一直穿到本集结束'}` },
+          { title: '穿这套的剧情', body: fmtBeats(store, worn.map(b => b.id)) },
+          { title: '他开场那一套', body: text(briefs[0]!) },
+          ...props,
+        ]
+      } else {
+        sections = [
+          ...card,
+          ...props,
+          { title: '同集其他人物', body: earlier.map(a => `${parse(a.scope).name}：${[pick(text(a), '主色').replace('主色：', '主色 '), pick(text(a), '区分').replace('区分：', ''), pick(text(a), '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`).join('\n') },
+        ]
+      }
     } else if (kind === 'loc') {
       // The sections and their wording are the ones the location experiments ran with (src/m0/chain.ts, runs/ab-story).
       const place = ep.roster.locations.find(l => l.name === name)!
@@ -191,7 +271,12 @@ const picture: NodeDef = {
   ready(store, scope): Ready {
     const d = store.locked('entity_desc', scope)
     if (!d) return { ok: false }
-    const { kind, name } = parse(scope)
+    const { kind, name, costume } = parse(scope)
+    // One group, one root (design 06): a later costume is drawn from the opening portrait.
+    if (costume) {
+      const opening = lockedImage(store, scopeOf('char', name))
+      return opening ? { ok: true, inputs: [d.id, opening.lock.id] } : { ok: false }
+    }
     if (kind !== 'loc') return { ok: true, inputs: [d.id] }
     const style = store.locked('style_ref', 'p')
     const b = store.locked('entity_brief', scope)
@@ -202,15 +287,17 @@ const picture: NodeDef = {
   },
   async run(env, scope, run, inputs) {
     const e = env as EntityEnv
-    const { kind } = parse(scope)
-    const body = text(e.store.artifact(inputs[0]!))
-    const refs = kind !== 'loc' ? [] : [
+    const { kind, name, costume } = parse(scope)
+    const lockedMedia = (id: number) => e.store.artifact((e.store.artifact(id).payload as { image_id: number }).image_id)
+    const desc = text(e.store.artifact(inputs[0]!))
+    const refs = costume ? [{ label: `${name}的定妆照`, media: lockedMedia(inputs[1]!).media_id! }] : kind !== 'loc' ? [] : [
       { label: '风格参考图', media: styleRefMedia(e) },
       ...inputs.slice(2).map(id => {
-        const img = e.store.artifact((e.store.artifact(id).payload as { image_id: number }).image_id)
+        const img = lockedMedia(id)
         return { label: `${parse(img.scope).name}的设定图`, media: img.media_id! }
       }),
     ]
+    const body = costume ? `${readFileSync(join(e.root, 'config/prompts/costume.md'), 'utf8').trim().replaceAll('{{name}}', name)}\n\n${desc}` : desc
     if (!run.instruction) return draw(e, scope, run, inputs, PICTURE[kind], body, refs, CANDIDATES)
     // The creator's note on one candidate (Engine.edit): drawn from that candidate, which goes into the review beside the new ones.
     const from = e.store.artifact(run.previous_id!)
@@ -226,17 +313,16 @@ const derive: NodeDef = {
   output: 'entity_image',
   review: 5,
   paid: { pool: 'image', count: 1 },
-  scopes: store => names(store, 'char').flatMap(name => Object.keys(DERIVED).map(d => `${scopeOf('char', name)}/${d}`)),
+  scopes: store => people(store).flatMap(p => looks(p).flatMap(look => derivedOf(p, look).map(d => `${look}/${d}`))),
   ready(store, scope) {
-    const { name } = parse(scope)
-    const root = lockedImage(store, scopeOf('char', name))
+    const root = lockedImage(store, designScope(scope))
     return root ? { ok: true, inputs: [root.lock.id] } : { ok: false }
   },
   async run(env, scope, run, inputs) {
     const e = env as EntityEnv
-    const { name, derived } = parse(scope)
+    const { name, costume, derived } = parse(scope)
     const root = e.store.artifact((e.store.artifact(inputs[0]!).payload as { image_id: number }).image_id)
-    return draw(e, scope, run, inputs, DERIVED[derived as keyof typeof DERIVED], '', [{ label: `${name}的定妆照`, media: root.media_id! }], 1)
+    return draw(e, scope, run, inputs, DERIVED[derived as Derived], '', [{ label: `${name}${costume ? `（${costume}）` : ''}的定妆照`, media: root.media_id! }], 1)
   },
 }
 
