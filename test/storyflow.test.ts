@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Stories, type Writer } from '../src/m1/storyflow.js'
@@ -74,4 +74,26 @@ test('directions redone with a note carry the previous three and the note', asyn
   expect(seen[1]!.map(s => s.title)).toEqual(['一句话想法', '单集时长', '上一批方向', '创作者的意见'])
   expect(seen[1]![2]!.body).toContain('方向 1\n标题：废柴觉醒')
   expect(seen[1]![3]!.body).toBe('主角要更狠一点')
+})
+
+test('a story cut off while it was being written carries on from where it stopped when the flow starts again', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'yx-story-'))
+  const first = new Stories(ROOT, dir, writer([55], []))
+  const { id } = first.start('废柴觉醒')
+  await settle(first, id)
+  first.choose(id, 0)
+  await settle(first, id)
+  // As the process leaves it when it dies after the rewrite: the screenplay written, no beats, the step still marked.
+  const path = join(dir, id, 'story.json')
+  const cut = { ...JSON.parse(readFileSync(path, 'utf8')), script: undefined, step: 'script-revised' }
+  writeFileSync(path, JSON.stringify(cut))
+  const calls: string[] = []
+  const base = writer([55], [])
+  const again = new Stories(ROOT, dir, async (task, tag, sections, data, logDir) => { calls.push(task); return base(task, tag, sections, data, logDir) })
+  expect(again.resumeInterrupted()).toEqual([id])
+  await settle(again, id)
+  const story = again.get(id)
+  expect(story.script!.scenes[0]!.beats[0]!.seconds).toBe(55)
+  expect(calls).toEqual(['script-extract'])
+  expect(again.resumeInterrupted()).toEqual([])
 })

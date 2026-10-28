@@ -34,6 +34,8 @@ const app: App = {
     console.log(`${time()} 切换到项目 ${current.dir}`)
   },
 }
+const resumed = app.stories.resumeInterrupted()
+if (resumed.length) console.log(`${time()} 上次被打断的故事接着写：${resumed.join('、')}`)
 console.log(`${time()} 审核页：${serve(app, PORT)}（已暂停，在页面上点「继续」才开始跑）`)
 
 async function watchGpu() {

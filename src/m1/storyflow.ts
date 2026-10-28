@@ -57,6 +57,31 @@ export class Stories {
     return readdirSync(this.dir).filter(id => existsSync(join(this.dir, id, 'story.json'))).sort().reverse().map(id => this.get(id))
   }
 
+  /**
+   * Stories whose last step was cut off (the process stopped while it was writing) carry on from
+   * where they stopped: a written screenplay is extracted, a chosen direction is written again from
+   * its setup, an idea gets its directions. Called once at start-up; returns the ids picked up.
+   */
+  resumeInterrupted(): string[] {
+    const resumed: string[] = []
+    for (const id of readdirSync(this.dir).filter(x => existsSync(join(this.dir, x, 'story.json')))) {
+      const story = JSON.parse(readFileSync(join(this.dir, id, 'story.json'), 'utf8')) as Story
+      if (!story.step || story.project || this.busy.has(id)) continue
+      if (story.text && !story.script) this.run(story, s => this.extract(s))
+      else if (story.chosen !== undefined && !story.script) this.choose(id, story.chosen)
+      else if (!story.directions) this.run(story, async s => {
+        s.directions = (await this.call<{ directions: Direction[] }>(s, 'story-directions', 'directions', [{ title: '一句话想法', body: s.idea }, { title: '单集时长', body: length }])).directions
+      })
+      else {
+        story.step = undefined
+        this.save(story)
+        continue
+      }
+      resumed.push(id)
+    }
+    return resumed
+  }
+
   get(id: string): Story {
     return { ...(JSON.parse(readFileSync(join(this.dir, id, 'story.json'), 'utf8')) as Story), ...(this.busy.has(id) ? {} : { step: undefined }) }
   }
