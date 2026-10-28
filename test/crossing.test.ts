@@ -27,7 +27,7 @@ const TL: TimelineT = {
     { index: 1, start: 0, end: 5, camera: '固定', shot: '全景', present: { characters: ['谢无咎'], backs: [], props: [], view: '主视角' }, location: '封剑洞' },
     { index: 2, start: 5, end: 10, camera: '跟拍', shot: '中景', present: { characters: ['谢无咎'], backs: [], props: [], view: '主视角' }, location: '封剑洞外' },
   ],
-  timeline: Array.from({ length: 10 }, (_, second) => ({ second, text: `第${second}秒`, changes: [] })),
+  timeline: Array.from({ length: 10 }, (_, second) => ({ from: second, to: second + 1, text: `第${second}秒`, changes: [] })),
   lines: [], ambience: '风', fight: false,
 }
 

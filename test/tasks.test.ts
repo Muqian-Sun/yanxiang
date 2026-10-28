@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CARDS } from '../src/tasks.js'
+import { CARDS, momentsOf, type TimelineT } from '../src/tasks.js'
 
 /** A structured output that parses is checked with its defaults filled, as the runner does; one that does not is checked as it is. */
 const check = (name: string, out: unknown, data?: unknown) => {
@@ -34,9 +34,23 @@ test('a character design that gives him a thing named like someone else\'s prop 
 const timeline = (lines: { speaker: string; text: string; start: number; end: number }[], present = { characters: [] as string[], props: [] as string[] }, cuts?: { index: number; start: number; end: number; backs?: string[] }[]) => ({
   seconds: cuts ? cuts.at(-1)!.end : 4,
   cuts: (cuts ?? [{ index: 1, start: 0, end: 4 }]).map(c => ({ index: c.index, start: c.start, end: c.end, camera: '固定', shot: '中景', present: { ...present, backs: c.backs ?? [], view: '主视角' } })),
-  timeline: Array.from({ length: cuts ? cuts.at(-1)!.end : 4 }, (_, second) => ({ second, text: '动作', changes: [] })),
+  timeline: (cuts ?? [{ index: 1, start: 0, end: 4 }]).map(c => ({ from: c.start, to: c.end, text: '动作', changes: [] })),
   lines,
   ambience: '风声',
+})
+
+test('a timeline is written one entry a shot, from its start to its end', () => {
+  const data = { seconds: 9, lines: [], characters: [], props: [], locations: ['封剑洞'] }
+  const at = (moments: [number, number][]) => ({ ...timeline([], undefined, [{ index: 1, start: 0, end: 5 }, { index: 2, start: 5, end: 9 }]), timeline: moments.map(([from, to]) => ({ from, to, text: '动作', changes: [] })) })
+  expect(check('timeline', at([[0, 5], [5, 9]]), data)).toEqual([])
+  expect(check('timeline', at([[0, 3], [3, 5], [5, 9]]), data)).toEqual(['timeline 每个镜头写一项，按镜头顺序，from、to 照抄这个镜头的 start、end：镜头是 0–5、5–9，timeline 写的是 0–3、3–5、5–9'])
+  expect(check('timeline', at([[0, 9]]), data)).toHaveLength(1)
+  expect(check('timeline', at([[5, 9], [0, 5]]), data)).toHaveLength(1)
+})
+
+test('a timeline stored before 2026-10-28, an entry a second, reads as one-second stretches', () => {
+  const stored = { timeline: [{ second: 0, text: '睁眼', changes: [] }, { second: 1, text: '起身', changes: ['锁链断开'] }] } as unknown as TimelineT
+  expect(momentsOf(stored)).toEqual([{ from: 0, to: 1, text: '睁眼', changes: [] }, { from: 1, to: 2, text: '起身', changes: ['锁链断开'] }])
 })
 
 test('a timeline that changes a word of the dialogue is sent back', () => {

@@ -9,7 +9,7 @@ import { loadModels } from '../llm.js'
 import { fmtDirection, type Direction } from '../m1/storyflow.js'
 import { loadPlugins } from '../plugins.js'
 import { runTask, TaskFailed, type RunResult, type Section } from '../runner.js'
-import { CARDS, costumeChanges, screenplay, setupSection, voicedPerBeat, type CharacterData, type PlanData, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
+import { CARDS, costumeChanges, momentsOf, screenplay, setupSection, voicedPerBeat, type CharacterData, type PlanData, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const idea = process.argv[2]
@@ -170,7 +170,7 @@ if (!plan) process.exit(1)
 const timelines = new Map<string, TimelineT>()
 const lastCut = (tl: TimelineT) => {
   const cut = tl.cuts.at(-1)!
-  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后一秒：${tl.timeline.at(-1)?.text ?? ''}`
+  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后几秒：${momentsOf(tl).at(-1)?.text ?? ''}`
 }
 const runs: number[][] = []
 plan.segments.forEach((segment, i) => (segment.continues && runs.length ? runs.at(-1)!.push(i) : runs.push([i])))
@@ -215,13 +215,13 @@ for (const segment of plan.segments.slice(0, 3)) {
     ].map((label, k) => `图 ${k + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(designs.get(`char:${name}`) ?? '', '主色').replace('主色：', '')}`)
     const furnishing = pick(designs.get(`loc:${segment.location}`) ?? '', '陈设')
-    const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
+    const second = momentsOf(tl).find(m => m.from <= cut.start && cut.start < m.to)
     keyframeJobs.push(() => call<string>('keyframe-desc', `keyframe-${segment.id}-c${cut.index}`, [
-      { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
+      { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second && second.to - second.from > 1 ? `（这个镜头第 ${second.from}–${second.to} 秒的全部内容，关键帧只取开头这一刻）` : ''}${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
       { title: '参考图', body: refs.join('\n') },
       { title: '人物主色', body: colors.join('\n') },
       { title: '场内陈设', body: furnishing },
-      { title: '此刻的状态', body: [...startState, ...tl.timeline.filter(e => e.second < cut.start).flatMap(e => e.changes)].join('\n') },
+      { title: '此刻的状态', body: [...startState, ...momentsOf(tl).filter(m => m.to <= cut.start).flatMap(m => m.changes)].join('\n') },
     ]))
   }
 }
