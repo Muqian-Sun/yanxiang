@@ -6,6 +6,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { loadModels } from '../llm.js'
+import { fmtDirection, type Direction } from '../m1/storyflow.js'
 import { loadPlugins } from '../plugins.js'
 import { runTask, TaskFailed, type RunResult, type Section } from '../runner.js'
 import { CARDS, costumeChanges, screenplay, setupSection, voicedPerBeat, type CharacterData, type PlanData, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
@@ -59,14 +60,13 @@ const pick = (text: string, key: string) => lines(text).filter(l => l.startsWith
 // 1. 故事方向；REUSE_DIRECTIONS=<上一轮的 logs/directions.json> 时沿用上一轮的方向，便于对比同一个故事
 const reuse = process.env.REUSE_DIRECTIONS
 const directions = reuse
-  ? (JSON.parse(readFileSync(reuse, 'utf8')).output as { directions: Record<string, string>[] })
-  : await call<{ directions: Record<string, string>[] }>('story-directions', 'directions', [
+  ? (JSON.parse(readFileSync(reuse, 'utf8')).output as { directions: Direction[] })
+  : await call<{ directions: Direction[] }>('story-directions', 'directions', [
       { title: '一句话想法', body: idea },
       { title: '单集时长', body: `约 2 分钟（${MIN}–${MAX} 秒）` },
     ])
 if (!directions) process.exit(1)
 const chosen = directions.directions[0]!
-const fmtDirection = (d: Record<string, string>) => `标题：${d.title}\n梗概：${d.logline}\n主角的策略：${d.strategy}\n对抗：${d.opposition}\n代价：${d.cost}\n本集兑现：${d.payoff}\n开场画面：${d.opening}`
 
 // 2. 本集设定 → 剧本正文 → 拆成拍和出场清单；正文里每场的环境段由程序挂回拆出来的场上
 const setup = await call<string>('story-setup', 'setup', [

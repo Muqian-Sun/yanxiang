@@ -12,7 +12,12 @@ import { Store } from '../store/store.js'
 import { CARDS, screenplay, Script, scriptProblems, setupSection, type ScriptT } from '../tasks.js'
 import { SAMPLE } from './spec.js'
 
-export type Direction = { title: string; logline: string; strategy: string; opposition: string; cost: string; payoff: string; opening: string }
+export type Direction = { title: string; logline: string; situation: string; opposition: string; episode: string; cliffhanger: string; promise: string }
+/** How each field of a direction is named to the writers and on the page; the last three are from stories written before 2026-10-28, when an episode was a whole story. */
+export const DIRECTION_FIELDS = [
+  ['logline', '梗概'], ['situation', '主角处境'], ['opposition', '对抗'], ['episode', '第 1 集'], ['cliffhanger', '卡点'], ['promise', '全剧看点'],
+  ['strategy', '主角的策略'], ['cost', '代价'], ['payoff', '本集兑现'],
+] as const
 export type Story = {
   id: string
   idea: string
@@ -34,7 +39,10 @@ export type Story = {
 }
 
 const length = `${SAMPLE.min}–${SAMPLE.max} 秒`
-export const fmtDirection = (d: Direction) => `标题：${d.title}\n梗概：${d.logline}\n主角的策略：${d.strategy}\n对抗：${d.opposition}\n代价：${d.cost}\n本集兑现：${d.payoff}\n开场画面：${d.opening}`
+export const fmtDirection = (d: Direction) => {
+  const fields = d as unknown as Record<string, string | undefined>
+  return [`标题：${d.title}`, ...DIRECTION_FIELDS.filter(([key]) => fields[key]).map(([key, label]) => `${label}：${fields[key]}`)].join('\n')
+}
 
 /** One model call of the story half; tests pass a fake. */
 export type Writer = (task: string, tag: string, sections: Section[], data: unknown, logDir: string, onText: (text: string) => void) => Promise<unknown>

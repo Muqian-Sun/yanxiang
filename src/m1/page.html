@@ -817,10 +817,12 @@ function storyStatus(s) {
   if (s.directions && s.chosen === undefined) return '<span class="tag gold">方向待你挑</span>'
   return s.error ? '<span class="tag red">出错了</span>' : '<span class="tag">未完成</span>'
 }
+// Same list as DIRECTION_FIELDS in storyflow.ts; the last three are from stories written before 2026-10-28.
+const DIRECTION_FIELDS = [['logline', '梗概'], ['situation', '主角处境'], ['opposition', '对抗'], ['episode', '第 1 集'], ['cliffhanger', '卡点'], ['promise', '全剧看点'], ['strategy', '主角的策略'], ['cost', '代价'], ['payoff', '本集兑现']]
 function dirCard(d, i, chosen) {
   const f = (k, v) => '<dt>' + k + '</dt><dd>' + esc(v) + '</dd>'
   return '<article class="dir"><div class="num">方向 ' + (i + 1) + '</div><h3>' + esc(d.title) + '</h3><p class="logline">' + esc(d.logline) + '</p>' +
-    '<dl>' + f('主角的策略', d.strategy) + f('对抗', d.opposition) + f('代价', d.cost) + f('本集兑现', d.payoff) + f('开场画面', d.opening) + '</dl>' +
+    '<dl>' + DIRECTION_FIELDS.filter(([k]) => k !== 'logline' && d[k]).map(([k, label]) => f(label, d[k])).join('') + '</dl>' +
     (chosen === undefined ? '<button type="button" class="btn primary" onclick="chooseDir(' + i + ')">' + icon('check') + '就写这个</button>' : '') + '</article>'
 }
 async function startStory() {
@@ -880,7 +882,8 @@ function storyPage() {
       notePanel('哪里要改', '例如：太长了，删掉第二场的追逐，直接进对峙…', '<button type="button" class="btn primary" onclick="reviseStory()">' + icon('edit') + '按意见改，再拆成拍</button><span class="sp"></span>' + rewriteBtn)
   }
   let side = beatStat(s.script.scenes.flatMap(x => x.beats))
-  side += drawer('选定的方向', '<pre>' + esc(['梗概：' + s.directions[s.chosen].logline, '本集兑现：' + s.directions[s.chosen].payoff].join('\n')) + '</pre>', 'sd')
+  const chosenDir = s.directions[s.chosen]
+  side += drawer('选定的方向', '<pre>' + esc(DIRECTION_FIELDS.filter(([k]) => chosenDir[k]).map(([k, label]) => label + '：' + chosenDir[k]).join('\n')) + '</pre>', 'sd')
   side += drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss')
   side += drawer('审读意见（已按它改过）', '<pre>' + esc(s.review) + '</pre>', 'sr')
   if (s.notes && s.notes.length) side += drawer('你提过的意见（' + s.notes.length + ' 条，已改）', '<pre>' + esc(s.notes.join('\n\n')) + '</pre>', 'sn')

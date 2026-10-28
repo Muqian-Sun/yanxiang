@@ -139,7 +139,7 @@ export function screenplay(text: string): { scenes: ScreenplayScene[]; problems:
   return { scenes, problems }
 }
 
-const Direction = z.object({ title: z.string().min(1), logline: z.string().min(1), strategy: z.string().min(1), opposition: z.string().min(1), cost: z.string().min(1), payoff: z.string().min(1), opening: z.string().min(1) })
+const Direction = z.object({ title: z.string().min(1), logline: z.string().min(1), situation: z.string().min(1), opposition: z.string().min(1), episode: z.string().min(1), cliffhanger: z.string().min(1), promise: z.string().min(1) })
 /** `vo`: an off-screen voice; the speaker's lips do not move. */
 const Line = z.object({ speaker: z.string().min(1), text: z.string().min(1), vo: z.boolean().optional() })
 const Beat = z.object({ id: z.string().min(1), action: z.string(), lines: z.array(Line), seconds: z.number().int().positive(), changes: z.array(z.string()) })

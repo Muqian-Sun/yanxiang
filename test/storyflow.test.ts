@@ -2,13 +2,19 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Stories, type Writer } from '../src/m1/storyflow.js'
+import { fmtDirection, Stories, type Direction, type Writer } from '../src/m1/storyflow.js'
 import type { Section } from '../src/runner.js'
 
 const ROOT = join(import.meta.dir, '..')
 const SCREENPLAY = '场1 内 · 锁魂洞 · 子夜\n洞里四根锁链垂到石台。\n△ 林砚睁眼。\n林砚：我还活着。'
 const SETUP = '世界一角：青冥宗\n规则：同心印\n人物：\n林砚：外门杂役\n真相：五百年前\n地点：\n锁魂洞：禁地\n独有时刻：膝印'
-const DIRECTION = { title: '废柴觉醒', logline: '', strategy: '', opposition: '', cost: '', payoff: '', opening: '' }
+const DIRECTION = { title: '废柴觉醒', logline: '', situation: '', opposition: '', episode: '', cliffhanger: '', promise: '' }
+
+test('a direction is written out with the fields it has, an episode-one one and one stored before 2026-10-28 alike', () => {
+  expect(fmtDirection({ title: '甲', logline: '梗', situation: '处', opposition: '对', episode: '集', cliffhanger: '卡', promise: '看' })).toBe('标题：甲\n梗概：梗\n主角处境：处\n对抗：对\n第 1 集：集\n卡点：卡\n全剧看点：看')
+  const old = { title: '乙', logline: '梗', strategy: '策', opposition: '对', cost: '代', payoff: '兑' } as unknown as Direction
+  expect(fmtDirection(old)).toBe('标题：乙\n梗概：梗\n对抗：对\n主角的策略：策\n代价：代\n本集兑现：兑')
+})
 
 /** A writer whose extraction gives the screenplay `lengths[n]` seconds on its n-th call; it records every rewrite note. */
 function writer(lengths: number[], notes: string[]): Writer {
