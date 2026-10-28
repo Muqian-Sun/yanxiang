@@ -870,7 +870,8 @@ function storyPage() {
       '<div class="note-bar"><span class="hint">会带着这三个方向和你的意见，重新出三个</span><button type="button" class="btn primary" onclick="redirectStory()">' + icon('redo') + '按意见重新出</button></div></div>'
   }
   const rewriteBtn = s.chosen !== undefined ? '<button type="button" class="btn" onclick="rewriteDir(' + s.chosen + ')">' + icon('redo') + '从头重写这个方向' + (s.notes && s.notes.length ? '（带上你的意见）' : '') + '</button>' : ''
-  const setupDrawers = (s.setup ? drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss') : '') + (s.review ? drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'sr') : '')
+  const nextDrawer = s.next ? drawer('挪到下一集的部分', '<pre>' + esc(s.next) + '</pre>', 'sx', '', true) : ''
+  const setupDrawers = (s.setup ? drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss') : '') + (s.review ? drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'sr') : '') + nextDrawer
   if (!s.script && !s.text) {
     // The review step failed before a rewrite: the first draft can still be read, but only rewritten from the top.
     if (!s.draft) return h + '<div class="row-actions">' + rewriteBtn + '</div>'
@@ -887,6 +888,7 @@ function storyPage() {
   side += drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss')
   side += drawer('审读意见（已按它改过）', '<pre>' + esc(s.review) + '</pre>', 'sr')
   if (s.notes && s.notes.length) side += drawer('你提过的意见（' + s.notes.length + ' 条，已改）', '<pre>' + esc(s.notes.join('\n\n')) + '</pre>', 'sn')
+  side += nextDrawer
   // The sample's length comes from src/m1/spec.ts; the server refuses a project outside it.
   const secs = s.script.scenes.flatMap(x => x.beats).reduce((a, b) => a + b.seconds, 0)
   const lo = PROJ ? PROJ.sample.min : 0, hi = PROJ ? PROJ.sample.max : Infinity
