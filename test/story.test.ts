@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CARDS, screenplay, setupSection, voicedPerBeat, type ScriptT } from '../src/tasks.js'
+import { CARDS, screenplay, screenplayRows, setupSection, splitScreenplay, voicedPerBeat, type ScriptT } from '../src/tasks.js'
 
 /** A structured output that parses is checked with its defaults filled, as the runner does; one that does not is checked as it is. */
 const check = (name: string, out: unknown, data?: unknown) => {
@@ -88,6 +88,21 @@ test('a segment may not run across a costume change', () => {
   const plan = (...groups: string[][]) => ({ segments: groups.map((beats, i) => ({ id: `g${i + 1}`, beats, seconds: 8, location: '锁魂洞', continues: false, summary: '对峙' })), overflow: [] })
   expect(check('segment-plan', plan(['b1'], ['b2', 'b3']), data)).toEqual([])
   expect(check('segment-plan', plan(['b1', 'b2'], ['b3']), data)).toEqual(['g1 跨过了换装：柳含烟从 b2 起换上嫁衣，b2 要作为一段的第一拍'])
+})
+
+test('a screenplay is split after a line; a rest that starts inside a scene carries that scene\'s heading and setting', () => {
+  const text = '场1 内 · 锁魂洞 · 子夜\n洞里四根锁链垂到石台。\n△ 谢无咎睁眼。\n柳含烟：钥匙不在我身上。\n\n场2 外 · 锁魂洞外 · 拂晓\n云海在脚下翻涌。\n△ 谢无咎走出洞口。'
+  const rows = screenplayRows(text)
+  expect(rows.map(r => r.kind)).toEqual(['heading', 'setting', 'action', 'line', 'heading', 'setting', 'action'])
+  expect(rows.map(r => Math.round(r.seconds * 10) / 10)).toEqual([0, 0, 3, 1.7, 0, 0, 3])
+  expect(splitScreenplay(text, rows, 2)).toEqual({ first: '场1 内 · 锁魂洞 · 子夜\n洞里四根锁链垂到石台。\n△ 谢无咎睁眼。', rest: '场1 内 · 锁魂洞 · 子夜\n洞里四根锁链垂到石台。\n柳含烟：钥匙不在我身上。\n\n场2 外 · 锁魂洞外 · 拂晓\n云海在脚下翻涌。\n△ 谢无咎走出洞口。' })
+  expect(splitScreenplay(text, rows, 3).rest).toBe('场2 外 · 锁魂洞外 · 拂晓\n云海在脚下翻涌。\n△ 谢无咎走出洞口。')
+  expect(screenplay(splitScreenplay(text, rows, 2).rest).problems).toEqual([])
+})
+
+test('an episode may only stop after a line that keeps it within its length', () => {
+  expect(check('episode-cut', { after: 12, reason: '话刚出口' }, { allowed: [9, 10, 11, 12, 15] })).toEqual([])
+  expect(check('episode-cut', { after: 14, reason: '话刚出口' }, { allowed: [9, 10, 11, 12, 15] })).toEqual(['第 14 行之后不能切，那样这一集不在单集时长里；只能在这些行之后选：9–12、15'])
 })
 
 const SETUP = '世界一角：青冥宗\n规则：同心印\n人物：\n谢无咎：剑修\n柳含烟：宗主\n真相：五百年前\n地点：\n锁魂洞：青冥宗禁地\n独有时刻：膝印'

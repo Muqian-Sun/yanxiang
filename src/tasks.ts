@@ -139,6 +139,39 @@ export function screenplay(text: string): { scenes: ScreenplayScene[]; problems:
   return { scenes, problems }
 }
 
+/** A non-empty line of the written screenplay, with the seconds the script prompt estimates for it (four characters a second spoken, three seconds an action). */
+export type ScreenplayRow = { index: number; text: string; kind: 'heading' | 'setting' | 'action' | 'line' | 'change'; scene: number; seconds: number }
+
+export function screenplayRows(text: string): ScreenplayRow[] {
+  const rows: ScreenplayRow[] = []
+  let scene = -1
+  text.split('\n').forEach((raw, index) => {
+    const line = raw.trim()
+    if (!line) return
+    if (HEADING.test(line)) return void rows.push({ index, text: line, kind: 'heading', scene: ++scene, seconds: 0 })
+    const said = line.match(DIALOGUE)
+    const kind = line.startsWith('△') ? 'action' : line.startsWith('[变化]') ? 'change' : rows.at(-1)?.kind === 'heading' && !(said && said[1]!.trim().length <= 8 && line.length <= 60) ? 'setting' : 'line'
+    rows.push({ index, text: line, kind, scene, seconds: kind === 'action' ? 3 : kind === 'line' ? voicedCount(said?.[2] ?? line) / SPEECH_RATE : 0 })
+  })
+  return rows
+}
+
+/**
+ * The screenplay up to and including `row` (an index into `rows`), and the rest. A rest that starts
+ * inside a scene gets that scene's heading and setting again, so it reads as a screenplay of its own.
+ */
+export function splitScreenplay(text: string, rows: ScreenplayRow[], row: number): { first: string; rest: string } {
+  const lines = text.split('\n')
+  const at = rows[row]!
+  const first = lines.slice(0, at.index + 1).join('\n').trimEnd()
+  const after = rows[row + 1]!
+  const carried = after.kind === 'heading' ? [] : rows.filter(r => r.scene === at.scene && (r.kind === 'heading' || r.kind === 'setting')).map(r => r.text)
+  return { first, rest: [...carried, ...lines.slice(after.index)].join('\n').trim() }
+}
+
+/** Numbers as runs: 3–7、9. */
+export const runsOf = (ns: number[]) => ns.reduce<number[][]>((out, n) => (out.at(-1)?.at(-1) === n - 1 ? out.at(-1)!.push(n) : out.push([n]), out), []).map(r => (r.length > 1 ? `${r[0]}–${r.at(-1)}` : `${r[0]}`)).join('、')
+
 const Direction = z.object({ title: z.string().min(1), logline: z.string().min(1), situation: z.string().min(1), opposition: z.string().min(1), episode: z.string().min(1), cliffhanger: z.string().min(1), promise: z.string().min(1) })
 /** `vo`: an off-screen voice; the speaker's lips do not move. */
 const Line = z.object({ speaker: z.string().min(1), text: z.string().min(1), vo: z.boolean().optional() })
@@ -210,6 +243,8 @@ export function voicedPerBeat(beats: { id: string; lines: { text: string }[] }[]
 }
 /** Props of the episode that someone else holds: the video binds every mention of a prop's name to its picture. */
 export type CharacterData = { others: { name: string; holder: string }[] }
+/** Lines (numbered from 1) after which the episode would still fit its length. */
+export type CutData = { allowed: number[] }
 export type ViewGroupsData = { cuts: string[] }
 /** The shortest shot, by the creator (2026-10-28): H3 had only been tried at 3 cuts in 15 s, and a cut of about a second looked too choppy to trust. */
 export const MIN_SHOT = 4
@@ -277,6 +312,10 @@ export const CARDS: Record<string, Card> = {
       if (extra.length) problems.push(`这些台词不在正文里或改了字：${extra.slice(0, 5).join(' / ')}`)
       return problems
     },
+  }),
+  'episode-cut': card<{ after: number; reason: string }, CutData>({
+    name: 'episode-cut', output: 'json', schema: z.object({ after: z.number().int(), reason: z.string().min(1) }),
+    checks: (out, data) => (data.allowed.includes(out.after) ? [] : [`第 ${out.after} 行之后不能切，那样这一集不在单集时长里；只能在这些行之后选：${runsOf(data.allowed)}`]),
   }),
   'character-design': card<string, CharacterData>({
     name: 'character-design', output: 'text',

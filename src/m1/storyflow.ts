@@ -9,7 +9,7 @@ import { loadModels } from '../llm.js'
 import { loadPlugins } from '../plugins.js'
 import { runTask, type Section } from '../runner.js'
 import { Store } from '../store/store.js'
-import { CARDS, screenplay, Script, scriptProblems, setupSection, type ScriptT } from '../tasks.js'
+import { CARDS, runsOf, screenplay, screenplayRows, Script, scriptProblems, setupSection, splitScreenplay, type CutData, type ScriptT } from '../tasks.js'
 import { SAMPLE } from './spec.js'
 
 export type Direction = { title: string; logline: string; situation: string; opposition: string; episode: string; cliffhanger: string; promise: string }
@@ -28,6 +28,8 @@ export type Story = {
   review?: string
   text?: string
   script?: ScriptT
+  /** What did not fit this episode's length, moved on unchanged as the start of the next (creator, 2026-10-28: over length is moved, not cut). */
+  next?: string
   /** The creator's notes on the script, applied in order. */
   notes?: string[]
   project?: string
@@ -162,7 +164,7 @@ export class Stories {
     return this.run(story, async s => {
       // With a note, the previous three and what the creator said about them go along, the way a revise does elsewhere.
       const before = note.trim() && s.directions ? [{ title: '上一批方向', body: s.directions.map((d, i) => `方向 ${i + 1}\n${fmtDirection(d)}`).join('\n\n') }, { title: '创作者的意见', body: note.trim() }] : []
-      Object.assign(s, { chosen: undefined, setup: undefined, draft: undefined, review: undefined, text: undefined, script: undefined, notes: undefined })
+      Object.assign(s, { chosen: undefined, setup: undefined, draft: undefined, review: undefined, text: undefined, script: undefined, next: undefined, notes: undefined })
       s.directions = (await this.call<{ directions: Direction[] }>(s, 'story-directions', 'directions', [{ title: '一句话想法', body: s.idea }, { title: '单集时长', body: length }, ...before])).directions
     })
   }
@@ -176,7 +178,7 @@ export class Stories {
     if (story.project) throw new Error('这个故事已经建成项目了')
     const carried = carry && story.chosen === index ? story.notes ?? [] : []
     return this.run(story, async s => {
-      Object.assign(s, { chosen: index, setup: undefined, draft: undefined, review: undefined, text: undefined, script: undefined, notes: carried })
+      Object.assign(s, { chosen: index, setup: undefined, draft: undefined, review: undefined, text: undefined, script: undefined, next: undefined, notes: carried })
       s.setup = await this.call<string>(s, 'story-setup', 'setup', [{ title: '选定的方向', body: fmtDirection(chosen) }, { title: '单集时长', body: length }])
       s.draft = await this.call<string>(s, 'script', 'script', [...this.scriptSections(s), ...(carried.length ? [{ title: '创作者看过上一版后的意见', body: carried.join('\n\n') }] : [])])
       s.review = await this.call<string>(s, 'script-review', 'script-review', [{ title: '本集设定', body: s.setup }, { title: '剧本正文', body: s.draft }])
@@ -212,26 +214,46 @@ export class Stories {
   }
 
   /**
-   * Beats and roster from the screenplay. The extraction estimates the length honestly and cannot
-   * shorten the story, so before the creator has seen it (`fit`), a screenplay outside the sample's
-   * length is rewritten to the measured number of seconds and extracted again. After the creator's
-   * note it is extracted once and shown as it is (creator, 2026-10-28: revise by my note, then let me
-   * review); the page marks the length and the project cannot be created until it fits.
+   * Beats and roster from the screenplay. A screenplay longer than the sample is not shortened: it is
+   * cut where it best stops and the rest moves on to the next episode (creator, 2026-10-28), whether
+   * or not the creator has seen it. A short one is rewritten longer only before the creator has seen it
+   * (`fit`); after the creator's note it is shown as it is (creator, 2026-10-28: revise by my note, then
+   * let me review), the page marks the length and the project cannot be created until it fits.
    */
   private async extract(s: Story, fit: boolean) {
     for (let round = 0; ; round++) {
       await this.extractOnce(s)
       const total = s.script!.scenes.flatMap(x => x.beats).reduce((sum, b) => sum + b.seconds, 0)
-      if (!fit || (total >= SAMPLE.min && total <= SAMPLE.max)) return
+      if (total >= SAMPLE.min && total <= SAMPLE.max) return
+      if (total < SAMPLE.min && !fit) return
       s.script = undefined
-      if (round >= FIT_ROUNDS) throw new Error(`剧本拆出来约 ${total} 秒，自动删改 ${FIT_ROUNDS} 次还不在 ${length}；在下面写意见让它改`)
-      const target = Math.round((SAMPLE.min + SAMPLE.max) / 2)
-      const how = total > SAMPLE.max
-        ? '删掉或合并不推动局面的动作、台词和停顿，保住处境的交代、那件事的来由和结尾的卡点'
-        : '补上该有的反应、停顿和过程，不加新的情节和人物'
-      s.text = await this.rewrite(s, s.text!, `按拆拍估算，这一版约 ${total} 秒，要落在 ${length}：${how}，改到 ${target} 秒左右。`)
+      if (round >= FIT_ROUNDS) throw new Error(`剧本拆出来约 ${total} 秒，自动调整 ${FIT_ROUNDS} 次还不在 ${length}；在下面写意见让它改`)
+      if (total > SAMPLE.max) await this.cut(s, total)
+      else s.text = await this.rewrite(s, s.text!, `按拆拍估算，这一版约 ${total} 秒，要落在 ${length}：补上该有的反应、停顿和过程，不加新的情节和人物，改到 ${Math.round((SAMPLE.min + SAMPLE.max) / 2)} 秒左右。`)
       this.save(s)
     }
+  }
+
+  /**
+   * Ends this episode at the line the model picks as the best place to stop, among those that keep it
+   * within the length; what follows becomes the start of the next. The prompt's per-line estimate is
+   * scaled to the extraction's total, which is what the length is judged by.
+   */
+  private async cut(s: Story, extracted: number) {
+    const rows = screenplayRows(s.text!)
+    const estimate = rows.reduce((sum, r) => sum + r.seconds, 0)
+    let upTo = 0
+    const numbered = rows.map((row, i) => ({ no: i + 1, row, upTo: Math.round((upTo += row.seconds * (extracted / estimate))) }))
+    const allowed = numbered.filter(x => x.row.kind !== 'heading' && x.row.kind !== 'setting' && x.upTo >= SAMPLE.min && x.upTo <= SAMPLE.max).map(x => x.no)
+    if (!allowed.length) throw new Error(`剧本拆出来约 ${extracted} 秒，找不到一行能让这一集落在 ${length}；在下面写意见让它改`)
+    const { after } = await this.call<{ after: number }>(s, 'episode-cut', 'episode-cut', [
+      { title: '剧本正文（每行前面是行号，和到这一行为止约多少秒）', body: numbered.map(x => `${x.no}｜约 ${x.upTo} 秒｜${x.row.text}`).join('\n') },
+      { title: '可以切在这些行之后', body: runsOf(allowed) },
+      { title: '单集时长', body: length },
+    ], { allowed } satisfies CutData)
+    const { first, rest } = splitScreenplay(s.text!, rows, after - 1)
+    s.text = first
+    s.next = s.next ? `${rest}\n\n${s.next}` : rest
   }
 
   private async extractOnce(s: Story) {
