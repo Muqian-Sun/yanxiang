@@ -48,7 +48,7 @@ export interface NodeDef {
 const POOL_LIMIT: Record<Pool, number> = { text: 4, vision: 2, image: 4, video: 1, edit: 1 }
 const KIND_NAMES: Record<string, string> = {
   script: '剧本', roster: '出场清单', entity_brief: '外观设计', entity_desc: '描述', entity_lock: '锁定图', style_ref: '风格参考图',
-  segment_plan: '分段', timeline: '时间轴', view_plan: '机位归并', keyframe_desc: '关键帧描述', keyframe: '关键帧', entity_image: '设定图',
+  segment_plan: '分段', blocking: '站位', timeline: '时间轴', view_plan: '机位归并', keyframe_desc: '关键帧描述', keyframe: '关键帧', entity_image: '设定图',
   audition: '试音', voice: '音色', clip_draft: '草稿', trim: '裁剪', cut_draft: '草稿成片', clip_final: '精修片', cut_final: '交付片',
 }
 

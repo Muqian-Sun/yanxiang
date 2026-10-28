@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImageRequest } from '../src/jobs/images.js'
 import { context } from '../src/m1/web.js'
-import { Engine, type TextRunner } from '../src/pipeline/engine.js'
+import { Engine, type TextRunner, type VisionRunner } from '../src/pipeline/engine.js'
 import { ENTITY_NODES, type EntityEnv } from '../src/pipeline/entities.js'
 import { STORYBOARD_NODES } from '../src/pipeline/storyboard.js'
 import { loadPlugins } from '../src/plugins.js'
 import type { Section } from '../src/runner.js'
 import { Store } from '../src/store/store.js'
-import type { PlanData, PlanT, TimelineT } from '../src/tasks.js'
+import type { BlockingData, PlanData, PlanT, TimelineT } from '../src/tasks.js'
 import type { ImageClient } from '../src/yir.js'
 
 const ROOT = join(import.meta.dir, '..')
@@ -20,7 +20,7 @@ const beat = (id: string, action: string, seconds = 5, lines: { speaker: string;
   ({ id, action, lines, seconds, changes })
 const SCRIPT = {
   scenes: [{
-    id: 'sc1', location: '封剑洞',
+    id: 'sc1', location: '封剑洞', setting: '石台居中，柳含烟立在洞口。',
     beats: [
       beat('b1', '谢无咎跪在石台上。', 5, [], ['锁链束住双腕']),
       beat('b2', '柳含烟抽出婚书。', 5, [{ speaker: '柳含烟', text: '签字。' }], ['婚书展开']),
@@ -70,6 +70,12 @@ const TL2: TimelineT = {
   fight: false,
 }
 
+/** Stands in for the staging model: everyone stands in one spot from the beat he comes on. */
+const staging = (data: BlockingData) => ({
+  spots: [{ name: '石台前', kind: '站位', where: '石台靠镜头一侧，主图画面中央' }],
+  people: Object.entries(data.first).map(([name, from]) => ({ name, from, spot: '石台前', pose: '站着，背对镜头', how: from === 'b1' ? '开场就在' : '从洞口走进来' })),
+})
+
 function project() {
   const store = new Store(mkdtempSync(join(tmpdir(), 'yx-sb-')))
   store.createProject({ name: '样片', entry: 'script', style: '3d-guoman', genre: 'xianxia', seconds_min: 45, seconds_max: 60, delivery: '1080p' })
@@ -85,7 +91,7 @@ function lockEntities(store: Store) {
     const list = kind === 'char' ? ROSTER.characters : kind === 'loc' ? ROSTER.locations : ROSTER.props
     for (const row of list) {
       const scope = `e1/${kind}/${row.name}`
-      store.addArtifact({ kind: 'entity_brief', scope, payload: { text: kind === 'char' ? '脸型：长\n主色：白\n区分：散发' : kind === 'loc' ? '陈设：石台居中' : '形制：长方' }, status: 'locked', created_by: 'user' })
+      store.addArtifact({ kind: 'entity_brief', scope, payload: { text: kind === 'char' ? '脸型：长\n主色：白\n区分：散发' : kind === 'loc' ? '格局：洞口朝南\n陈设：石台居中\n光源：洞口天光从南面照入' : '形制：长方' }, status: 'locked', created_by: 'user' })
       store.addArtifact({ kind: 'entity_desc', scope, payload: { text: `${row.name}描述` }, status: 'locked', created_by: 'user' })
       const media = store.putMedia(new TextEncoder().encode(scope), 'image/png')
       const img = store.addArtifact({ kind: 'entity_image', scope, payload: { job_id: 0, prompt: scope }, media_id: media, status: 'locked', created_by: 'user' })
@@ -100,9 +106,11 @@ function lockEntities(store: Store) {
   }
 }
 
-function fakeText(calls: { task: string; sections: Section[]; data?: unknown }[] = []): TextRunner {
-  return async ({ card, sections, data }) => {
-    calls.push({ task: card.name, sections, data })
+type Call = { task: string; sections: Section[]; data?: unknown; images?: string[] }
+function fakeText(calls: Call[] = []): TextRunner & VisionRunner {
+  return async ({ card, sections, data, images }: Parameters<TextRunner>[0] & { images?: string[] }) => {
+    calls.push({ task: card.name, sections, data, images })
+    if (card.name === 'blocking') return { output: staging(data as BlockingData), raw: '{}', attempts: [], system: '', user: '', promptVersion: 'v', model: 'fake' }
     if (card.name === 'segment-plan') return { output: PLAN, raw: '{}', attempts: [], system: '', user: '', promptVersion: 'v', model: 'fake' }
     if (card.name === 'timeline') {
       const body = sections.find(s => s.title === '这一段')!.body
@@ -141,7 +149,12 @@ function fakeImages(): Fake {
 }
 
 const engine = (store: Store, text = fakeText(), images = fakeImages()) =>
-  new Engine({ store, root: ROOT, text, images, style } as EntityEnv, [...ENTITY_NODES, ...STORYBOARD_NODES])
+  new Engine({ store, root: ROOT, text, vision: text, images, style } as EntityEnv, [...ENTITY_NODES, ...STORYBOARD_NODES])
+
+/** ★6 on every scene's staging, as the creator would. */
+function approveStagings(e: Engine, store: Store) {
+  for (const r of store.openReviews().filter(r => r.scope.startsWith('e1/scene/'))) e.approve(r.id)
+}
 
 async function round(e: Engine) {
   const pending = e.tick()
@@ -151,37 +164,60 @@ async function round(e: Engine) {
 
 test('plan waits for every root entity lock, then timelines follow; a continues segment waits for the previous timeline', async () => {
   const store = project()
-  const calls: { task: string; sections: Section[]; data?: unknown }[] = []
+  const calls: Call[] = []
   const e = engine(store, fakeText(calls))
   await round(e)
   expect(store.latest('segment_plan', 'e1')).toBeUndefined()
+  expect(store.latest('blocking', 'e1/scene/sc1')).toBeUndefined()
   lockEntities(store)
   await round(e)
   expect(store.locked('segment_plan', 'e1')!.payload).toEqual(PLAN)
   expect((calls.find(c => c.task === 'segment-plan')!.data as { beats: string[] }).beats).toEqual(['b1', 'b2', 'b3'])
+
+  // The scene's staging is decided looking at the location's main picture, and reviewed at ★6 before any timeline.
+  const staged = calls.find(c => c.task === 'blocking')!
+  // She is in the scene's setting, so she is there from its first beat although she first acts in b2.
+  expect(staged.data).toEqual({ beats: ['b1', 'b2', 'b3'], first: { 谢无咎: 'b1', 柳含烟: 'b1' } })
+  expect(staged.images).toEqual([store.mediaPath(store.artifact((store.locked('entity_lock', 'e1/loc/封剑洞')!.payload as { image_id: number }).image_id).media_id!)])
+  const review = store.openReviews().find(r => r.scope === 'e1/scene/sc1')!
+  expect(review.point).toBe(6)
+  expect(context(store, store.artifact(review.artifact_ids[0]!))).toEqual([{ title: '这一场的剧本', body: expect.stringContaining('b2（封剑洞，约 5 秒）柳含烟抽出婚书。') }])
+  await round(e)
+  expect(store.latestNodeRun('timeline', 'e1/g1')).toBeUndefined()
+  e.approve(review.id)
   await round(e)
   expect(store.locked('timeline', 'e1/g1')).toBeTruthy()
   expect(store.locked('timeline', 'e1/g2')).toBeUndefined()
   const g1 = calls.find(c => c.task === 'timeline' && c.sections[0]!.body.startsWith('g1'))!
   expect(g1.sections.find(s => s.title === '这一段开始时的状态')!.body).toBe('')
+  expect(g1.sections.find(s => s.title === '地点的格局')!.body).toBe('封剑洞\n格局：洞口朝南\n陈设：石台居中')
+  expect(g1.sections.find(s => s.title === '站位')!.body).toBe([
+    '封剑洞的位置（画面左右是主图的左右）：', '石台前（站位）：石台靠镜头一侧，主图画面中央',
+    '这一段开始时：', '还没有人在场',
+    '这一段里：', 'b1 起，谢无咎：石台前，站着，背对镜头；开场就在', 'b1 起，柳含烟：石台前，站着，背对镜头；开场就在',
+  ].join('\n'))
   await round(e)
   expect(store.locked('timeline', 'e1/g2')).toBeTruthy()
   const g2 = calls.find(c => c.task === 'timeline' && c.sections[0]!.body.startsWith('g2'))!
   expect(g2.sections.find(s => s.title === '上一段最后一个镜头')!.body).toContain('最后一秒：第9秒')
   expect(g2.sections.find(s => s.title === '这一段开始时的状态')!.body).toContain('锁链束住双腕')
   expect(g2.sections.find(s => s.title === '这一段开始时的状态')!.body).toContain('婚书展开')
+  expect(g2.sections.find(s => s.title === '站位')!.body).toContain('这一段开始时：\n谢无咎：石台前，站着，背对镜头\n柳含烟：石台前，站着，背对镜头\n这一段里：\n没有人换位置')
 })
 
 /** Plan, both timelines and the location's camera groups. */
 async function upToViews(e: Engine, store: Store) {
   lockEntities(store)
-  for (let i = 0; i < 4; i++) await round(e)
+  for (let i = 0; i < 4; i++) {
+    await round(e)
+    approveStagings(e, store)
+  }
   expect(store.locked('view_plan', 'e1/loc/封剑洞')).toBeTruthy()
 }
 
 test('cuts worded differently but from the same camera share one view picture; the main view uses the root picture', async () => {
   const store = project()
-  const calls: { task: string; sections: Section[]; data?: unknown }[] = []
+  const calls: Call[] = []
   const images = fakeImages()
   const e = engine(store, fakeText(calls), images)
   await upToViews(e, store)
@@ -218,6 +254,12 @@ test('cuts worded differently but from the same camera share one view picture; t
   expect(shown('e1/g2/c2')).toBe('锁链束住双腕\n婚书展开')
   expect(told(1)).toBe('')
   expect(shown('e1/g1/c2')).toBe('没有变化，和锁定的图一样')
+  // It is told what its camera position shows, where the light comes from and where everyone is.
+  const section = (n: number, title: string) => calls.filter(c => c.task === 'keyframe-desc')[n]!.sections.find(s => s.title === title)!.body
+  expect(section(0, '这个视角')).toBe('主图：封剑洞描述')
+  expect(section(1, '这个视角')).toBe('相机：站在石台侧面看向洞口\n这个机位的图：从侧面看石台，洞口在画面右侧。')
+  expect(section(0, '光源')).toBe('光源：洞口天光从南面照入')
+  expect(section(2, '站位')).toContain('这一段开始时：\n谢无咎：石台前，站着，背对镜头')
   const clip = store.addArtifact({ kind: 'clip_draft', scope: 'e1/g2', payload: {}, created_by: 'model' })
   expect(context(store, clip)).toEqual([{ title: '这一段开始时的状态', body: '锁链束住双腕\n婚书展开' }])
 
@@ -254,7 +296,7 @@ test('a cut binds the costume worn through its segment, and a name for several p
   store.addArtifact({ kind: 'entity_desc', scope: costume, payload: { text: '嫁衣描述' }, status: 'locked', created_by: 'user' })
   lockPicture(store, costume)
   lockPicture(store, 'e1/char/谢无咎/服装平铺')
-  const calls: { task: string; sections: Section[]; data?: unknown }[] = []
+  const calls: Call[] = []
   const e = engine(store, fakeText(calls))
   await upToViews(e, store)
   expect((calls.find(c => c.task === 'segment-plan')!.data as PlanData).changes).toEqual([{ name: '柳含烟', costume: '嫁衣', from: 'b3' }])

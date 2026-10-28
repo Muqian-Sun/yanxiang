@@ -256,7 +256,8 @@ test('from locked keyframes to the delivered episode: auditions, drafts with the
   const fake = fakeComfy(MODELS)
   const store = chainProject()
   const trims: unknown[] = []
-  const vision: VisionRunner = async ({ data, images, sections }) => {
+  const vision: VisionRunner = async ({ card, data, images, sections }) => {
+    if (card.name === 'blocking') return reply({ spots: [{ name: '石台前', kind: '站位', where: '主图画面中央' }], people: Object.entries((data as { first: Record<string, string> }).first).map(([name, from]) => ({ name, from, spot: '石台前', pose: '站着', how: '开场就在' })) })
     trims.push({ images: images.length, body: sections[0]!.body })
     const seconds = (data as { seconds: number }).seconds
     return reply({ in: 0.1, out: Math.round((seconds - 0.3) * 100) / 100, reason: '开头发呆，结尾空转' })

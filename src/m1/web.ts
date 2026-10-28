@@ -6,8 +6,9 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Engine, Gpu } from '../pipeline/engine.js'
-import { designScope, picturePrompt, type EntityEnv } from '../pipeline/entities.js'
-import { cutState, keyframePrompt, segmentState } from '../pipeline/storyboard.js'
+import { designScope, episode, fmtBeats, picturePrompt, type EntityEnv } from '../pipeline/entities.js'
+import { cutState, fmtBlocking, keyframePrompt, sceneScope, segmentState } from '../pipeline/storyboard.js'
+import type { BlockingT } from '../tasks.js'
 import { lcs } from '../video/subtitles.js'
 import type { Artifact, Store } from '../store/store.js'
 import type { Stories } from './storyflow.js'
@@ -15,10 +16,10 @@ import { describePending } from './env.js'
 import { library } from './library.js'
 import { SAMPLE } from './spec.js'
 
-const POINTS: Record<number, string> = { 2: '故事方向', 3: '剧本', 4: '外观设计', 5: '定妆照与试音', 6: '机位图与关键帧', 7: '草稿', 8: '整集草稿', 9: '交付片' }
+const POINTS: Record<number, string> = { 2: '故事方向', 3: '剧本', 4: '外观设计', 5: '定妆照与试音', 6: '站位、机位图与关键帧', 7: '草稿', 8: '整集草稿', 9: '交付片' }
 /** Nodes in pipeline order, as the progress page shows them. */
 const STAGES: [string, string][] = [
-  ['brief', '外观设计'], ['desc', '定妆描述'], ['image', '定妆照'], ['derive', '三视图、特写与服装平铺'], ['plan', '分段'], ['timeline', '时间轴'],
+  ['brief', '外观设计'], ['desc', '定妆描述'], ['image', '定妆照'], ['derive', '三视图、特写与服装平铺'], ['plan', '分段'], ['blocking', '站位'], ['timeline', '时间轴'],
   ['views', '机位分组'], ['view', '机位图'], ['kfdesc', '关键帧描述'], ['keyframe', '关键帧'], ['audition', '试音'], ['voice', '音色'],
   ['draft', '草稿'], ['trim', '裁头尾'], ['cut_draft', '整集草稿'], ['refine', '精修'], ['cut_final', '交付片'],
 ]
@@ -72,7 +73,18 @@ export function context(store: Store, a: Artifact, env?: EntityEnv): { title: st
     const state = segmentState(store, a.scope)
     if (state) out.push({ title: '这一段开始时的状态', body: state.join('\n') || UNCHANGED })
   }
+  if (a.kind === 'blocking') {
+    const scene = episode(store)?.scenes.find(s => sceneScope(s.id) === a.scope)
+    if (scene) out.push({ title: '这一场的剧本', body: fmtBeats(store, scene.beats.map(b => b.id)) })
+  }
   return out
+}
+
+/** A staging is read as text beside the main picture it was decided on. */
+function staging(store: Store, a: Artifact) {
+  if (a.kind !== 'blocking') return {}
+  const lock = store.inputsOf(a.id).map(id => store.artifact(id)).find(x => x.kind === 'entity_lock')
+  return { reading: fmtBlocking(a.payload as BlockingT), still: lock ? store.artifact((lock.payload as { image_id: number }).image_id).media_id : undefined }
 }
 
 function progress(store: Store, engine: Engine) {
@@ -108,7 +120,7 @@ function state(store: Store, engine: Engine, gpu: Gpu) {
       const a = store.artifact(id)
       const media = a.media_id ? (store.db.prepare('SELECT mime FROM media WHERE id = ?').get(a.media_id) as { mime: string }) : undefined
       const timeline = a.kind === 'clip_draft' ? store.locked('timeline', a.scope)?.payload : undefined
-      return { id: a.id, kind: a.kind, version: a.version, payload: a.payload, media: a.media_id, mime: media?.mime, context: context(store, a, engine.env as EntityEnv), timeline, revisable: engine.revisable(a.id), editable: engine.editable(a.id) }
+      return { id: a.id, kind: a.kind, version: a.version, payload: a.payload, media: a.media_id, mime: media?.mime, context: context(store, a, engine.env as EntityEnv), timeline, ...staging(store, a), revisable: engine.revisable(a.id), editable: engine.editable(a.id) }
     }),
   }))
   const unknown = store.jobs(['unknown']).map(j => ({ id: j.id, error: j.error }))

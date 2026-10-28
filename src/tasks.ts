@@ -214,6 +214,18 @@ export const ViewGroups = z.object({
   views: z.array(z.object({ name: z.string().min(1).max(12), camera: z.string(), cuts: z.array(z.string()).min(1) })).min(1),
 })
 export type ViewGroupsT = z.infer<typeof ViewGroups>
+/** Where people can be in a scene's location; a seat holds one person at a time. */
+export const SPOT_KINDS = ['座位', '站位', '出入口'] as const
+/**
+ * A scene's staging, decided once from the location's main picture so that every timeline and
+ * keyframe of the scene puts people in the same places (creator, 2026-10-28: seats changed and
+ * chairs multiplied from shot to shot). `people`: where someone is from a beat on, in beat order.
+ */
+export const Blocking = z.object({
+  spots: z.array(z.object({ name: z.string().min(1).max(8), kind: z.enum(SPOT_KINDS), where: z.string().min(1) })).min(1),
+  people: z.array(z.object({ name: z.string().min(1), from: z.string().min(1), spot: z.string().min(1), pose: z.string().min(1), how: z.string().min(1) })).min(1),
+})
+export type BlockingT = z.infer<typeof Blocking>
 
 export const Trim = z.object({ in: z.number().min(0), out: z.number().positive(), reason: z.string().min(1) })
 export type TrimT = z.infer<typeof Trim>
@@ -246,6 +258,8 @@ export type CharacterData = { others: { name: string; holder: string }[] }
 /** Lines (numbered from 1) after which the episode would still fit its length. */
 export type CutData = { allowed: number[] }
 export type ViewGroupsData = { cuts: string[] }
+/** The scene's beats in order, and the beat each person who is on stage in it is first there. */
+export type BlockingData = { beats: string[]; first: Record<string, string> }
 /** The shortest shot, by the creator (2026-10-28): H3 had only been tried at 3 cuts in 15 s, and a cut of about a second looked too choppy to trust. */
 export const MIN_SHOT = 4
 export type TimelineData = { seconds: number; lines: { speaker: string; text: string }[]; characters: string[]; props: string[]; locations: string[] }
@@ -378,6 +392,40 @@ export const CARDS: Record<string, Card> = {
       if (bad.length) problems.push(`机位名字里不能有斜杠：${bad.join('、')}`)
       const blank = out.views.filter(view => view.name !== MAIN_VIEW && !view.camera.trim()).map(view => view.name)
       if (blank.length) problems.push(`这些机位没写相机站位和朝向：${blank.join('、')}`)
+      return problems
+    },
+  }),
+  blocking: card<BlockingT, BlockingData>({
+    name: 'blocking', output: 'json', schema: Blocking,
+    checks: (out, data) => {
+      const problems: Problems = []
+      const names = out.spots.map(s => s.name)
+      const dup = names.filter((n, i) => names.indexOf(n) !== i)
+      if (dup.length) problems.push(`位置的名字重复：${[...new Set(dup)].join('、')}`)
+      const people = Object.keys(data.first)
+      const strangers = [...new Set(out.people.map(p => p.name).filter(n => !people.includes(n)))]
+      if (strangers.length) problems.push(`这些人不在这一场：${strangers.join('、')}；name 只能写 ${people.join('、')}`)
+      const nowhere = out.people.filter(p => !names.includes(p.spot)).map(p => `${p.name}（${p.from}）的「${p.spot}」`)
+      if (nowhere.length) problems.push(`spot 要照抄 spots 里的名字，这些没有：${nowhere.join('、')}`)
+      const offScript = out.people.filter(p => !data.beats.includes(p.from)).map(p => `${p.name}的「${p.from}」`)
+      if (offScript.length) problems.push(`from 要写这一场的拍号（${data.beats.join('、')}），这些不是：${offScript.join('、')}`)
+      const at = (beat: string) => data.beats.indexOf(beat)
+      const unplaced = people.filter(n => !out.people.some(p => p.name === n && at(p.from) >= 0 && at(p.from) <= at(data.first[n]!)))
+      if (unplaced.length) problems.push(`这些人到出场的那一拍还没有位置：${unplaced.map(n => `${n}（${data.first[n]} 出场）`).join('、')}`)
+      const seats = new Set(out.spots.filter(s => s.kind === '座位').map(s => s.name))
+      const crowded = data.beats.flatMap(beat => {
+        const where = new Map<string, string[]>()
+        for (const name of people) {
+          const spot = out.people.filter(p => p.name === name && at(p.from) >= 0 && at(p.from) <= at(beat)).sort((a, b) => at(a.from) - at(b.from)).at(-1)?.spot
+          if (spot && seats.has(spot)) where.set(spot, [...(where.get(spot) ?? []), name])
+        }
+        return [...where].filter(([, who]) => who.length > 1).map(([spot, who]) => `${beat} 的${spot}坐了${who.join('、')}`)
+      })
+      if (crowded.length) problems.push(`一个座位同一时刻只坐一个人：${crowded.join('；')}`)
+      // Directions are the main picture's (creator, 2026-10-28); 「东西」 as "things" is not one.
+      const fields = [...out.spots.flatMap(s => [s.name, s.where]), ...out.people.flatMap(p => [p.pose, p.how])]
+      const compass = [...new Set(fields.flatMap(t => t.replaceAll('东西', '').match(/[东南西北]+[^\s，。；、]?/g) ?? []))]
+      if (compass.length) problems.push(`方位按主图画面写上下左右，不用东南西北，名字里也不用；这些词要换掉：${compass.join('、')}。对照主图换成画面上的说法，例如门在画面下方就写「门口」，桌子靠画面右边的一头写「桌子右端」，桌子离镜头远的一侧写「桌后」`)
       return problems
     },
   }),

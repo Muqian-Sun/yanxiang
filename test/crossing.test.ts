@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Engine, type TextRunner } from '../src/pipeline/engine.js'
+import { Engine, type TextRunner, type VisionRunner } from '../src/pipeline/engine.js'
 import { ENTITY_NODES, type EntityEnv } from '../src/pipeline/entities.js'
 import { STORYBOARD_NODES } from '../src/pipeline/storyboard.js'
 import { loadPlugins } from '../src/plugins.js'
 import type { Section } from '../src/runner.js'
 import { Store } from '../src/store/store.js'
-import type { PlanT, TimelineT } from '../src/tasks.js'
+import type { BlockingData, PlanT, TimelineT } from '../src/tasks.js'
 import type { ImageClient } from '../src/yir.js'
 
 const ROOT = join(import.meta.dir, '..')
@@ -48,8 +48,12 @@ test('a segment that crosses scenes puts each shot at its own location: camera g
   }
   const calls: { task: string; sections: Section[]; data?: unknown }[] = []
   const reply = (output: unknown) => ({ output, raw: '', attempts: [], system: '', user: '', promptVersion: 'v', model: 'fake' })
-  const text: TextRunner = async ({ card, sections, data }) => {
+  const text: TextRunner & VisionRunner = async ({ card, sections, data }) => {
     calls.push({ task: card.name, sections, data })
+    if (card.name === 'blocking') {
+      const where = sections[0]!.body.startsWith('s1') ? '石台旁' : '洞口外'
+      return reply({ spots: [{ name: where, kind: '站位', where: '主图画面中央' }], people: Object.entries((data as BlockingData).first).map(([name, from]) => ({ name, from, spot: where, pose: '站着', how: '走过来' })) })
+    }
     if (card.name === 'segment-plan') return reply(PLAN)
     if (card.name === 'timeline') return reply(TL)
     if (card.name === 'view-groups') return reply({ views: [{ name: '主视角', camera: '', cuts: (data as { cuts: string[] }).cuts }] })
@@ -57,15 +61,23 @@ test('a segment that crosses scenes puts each shot at its own location: camera g
   }
   const submits: string[] = []
   const images = { async submit(_k: string, prompt: string) { submits.push(prompt); return { providerJob: `j${submits.length}`, quotedUsd: 0 } }, async poll() { return 'succeeded' }, async wait() {}, async download(id: string) { return { bytes: new TextEncoder().encode(id), mime: 'image/png' } } } as unknown as ImageClient
-  const e = new Engine({ store, root: ROOT, text, images, style } as EntityEnv, [...ENTITY_NODES, ...STORYBOARD_NODES])
+  const e = new Engine({ store, root: ROOT, text, vision: text, images, style } as EntityEnv, [...ENTITY_NODES, ...STORYBOARD_NODES])
   store.grant('e1', 'image', 10)
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     e.tick()
     await e.settle()
+    for (const r of store.openReviews().filter(r => r.scope.startsWith('e1/scene/'))) e.approve(r.id)
   }
   const timeline = calls.find(c => c.task === 'timeline')!
   expect(timeline.sections[0]!.body).toContain('地点：封剑洞 → 封剑洞外')
   expect((timeline.data as { locations: string[] }).locations).toEqual(['封剑洞', '封剑洞外'])
+  // The timeline is told the staging of both scenes; each shot's keyframe only that of its own location.
+  const staging = (c: { sections: Section[] }) => c.sections.find(s => s.title === '站位')!.body
+  expect(staging(timeline)).toContain('石台旁（站位）')
+  expect(staging(timeline)).toContain('洞口外（站位）')
+  const told = calls.filter(c => c.task === 'keyframe-desc').map(staging)
+  expect(told.filter(t => t.includes('石台旁') && !t.includes('洞口外'))).toHaveLength(1)
+  expect(told.filter(t => t.includes('洞口外') && !t.includes('石台旁'))).toHaveLength(1)
   const groups = calls.filter(c => c.task === 'view-groups').map(c => (c.data as { cuts: string[] }).cuts)
   expect(groups).toContainEqual(['g1/c1'])
   expect(groups).toContainEqual(['g1/c2'])

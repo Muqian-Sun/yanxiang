@@ -2,7 +2,7 @@ import { imagePrompt } from '../compose.js'
 import { image } from '../jobs/images.js'
 import type { Section } from '../runner.js'
 import type { Artifact, Store } from '../store/store.js'
-import { CARDS, costumeChanges, MAIN_VIEW, voicedPerBeat, type PlanData, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
+import { CARDS, costumeChanges, MAIN_VIEW, voicedPerBeat, type BlockingData, type BlockingT, type PlanData, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
 import type { NodeDef, Ready } from './engine.js'
 import {
   EPISODE, episode, figureAt, fmtBeats, imageParams, lockedImage, lookAt, names, pick, revision, scopeOf, styleRefMedia, text,
@@ -11,9 +11,11 @@ import {
 
 type Segment = PlanT['segments'][number]
 type Cut = TimelineT['cuts'][number]
+type Scene = NonNullable<ReturnType<typeof episode>>['scenes'][number]
 
 const json = (a: Artifact) => JSON.stringify(a.payload, null, 2)
 export const segmentScope = (id: string) => `${EPISODE}/${id}`
+export const sceneScope = (id: string) => `${EPISODE}/scene/${id}`
 /** How a cut is named to the writers, and the tail of its scope. */
 export const cutId = (segmentId: string, index: number) => `${segmentId}/c${index}`
 export const cutScope = (segmentId: string, index: number) => `${EPISODE}/${cutId(segmentId, index)}`
@@ -62,6 +64,61 @@ function presentNames(store: Store, segment: Segment): string[] {
   const here = segmentLocations(store, segment)
   return roster.filter(name => here.includes(name) || beats.some(b => b.action.includes(name) || b.lines.some(l => l.speaker === name || l.text.includes(name))))
 }
+
+/** Someone is there in a beat when its action names him or he speaks other than off-screen. */
+const onStage = (beat: { action: string; lines: { speaker: string; vo?: boolean }[] }, name: string) => beat.action.includes(name) || beat.lines.some(l => l.speaker === name && !l.vo)
+
+/** The beat each person is first on stage in a scene; someone in the scene's setting is there from its first beat. */
+function firstOnStage(store: Store, scene: Scene): Record<string, string> {
+  return Object.fromEntries(names(store, 'char').flatMap(name => {
+    const beat = scene.setting?.includes(name) ? scene.beats[0] : scene.beats.find(b => onStage(b, name))
+    return beat ? [[name, beat.id]] : []
+  }))
+}
+
+/** The scenes a segment's beats are in, in order. */
+function scenesOf(store: Store, segment: Segment): Scene[] {
+  return episode(store)!.scenes.filter(scene => scene.beats.some(b => segment.beats.includes(b.id)))
+}
+
+/** A scene's staging in full, as the creator reviews it. */
+export function fmtBlocking(b: BlockingT): string {
+  return [
+    '位置（画面左右是主图的左右）：',
+    ...b.spots.map(s => `${s.name}（${s.kind}）：${s.where}`),
+    '',
+    '人物：',
+    ...b.people.map(p => `${p.from} 起，${p.name}：${p.spot}，${p.pose}；${p.how}`),
+  ].join('\n')
+}
+
+/** A scene's staging as a segment of it needs it: the places, where everyone is as it opens, and who moves during it. */
+function stagingOf(scene: Scene, b: BlockingT, segment: Segment): string {
+  const ids = scene.beats.map(x => x.id)
+  const open = ids.findIndex(id => segment.beats.includes(id))
+  const before = [...new Set(b.people.map(p => p.name))].flatMap(name => {
+    const p = b.people.filter(x => x.name === name && ids.indexOf(x.from) < open).at(-1)
+    return p ? [`${name}：${p.spot}，${p.pose}`] : []
+  })
+  const during = b.people.filter(p => segment.beats.includes(p.from)).map(p => `${p.from} 起，${p.name}：${p.spot}，${p.pose}；${p.how}`)
+  return [
+    `${scene.location}的位置（画面左右是主图的左右）：`,
+    ...b.spots.map(s => `${s.name}（${s.kind}）：${s.where}`),
+    '这一段开始时：',
+    ...(before.length ? before : ['还没有人在场']),
+    '这一段里：',
+    ...(during.length ? during : ['没有人换位置']),
+  ].join('\n')
+}
+
+/** The locked staging of every scene a segment is in, or undefined while one is missing. */
+function stagings(store: Store, segment: Segment, location?: string) {
+  const scenes = scenesOf(store, segment).filter(s => !location || s.location === location)
+  const locked = scenes.map(scene => ({ scene, blocking: store.locked('blocking', sceneScope(scene.id)) }))
+  return locked.every(s => s.blocking) ? locked.map(s => ({ scene: s.scene, blocking: s.blocking! })) : undefined
+}
+
+const layout = (brief: string) => ['格局', '陈设', '道具位置', '门窗外'].map(key => pick(brief, key)).filter(Boolean).join('\n')
 
 function lastCutBlurb(tl: TimelineT): string {
   const cut = tl.cuts.at(-1)!
@@ -164,6 +221,51 @@ const plan: NodeDef = {
   },
 }
 
+/** ★6: a scene's staging, written looking at its location's main picture, before any of its timelines. */
+const blocking: NodeDef = {
+  name: 'blocking',
+  pool: 'vision',
+  output: 'blocking',
+  review: 6,
+  scopes(store) {
+    return episode(store)?.scenes.map(s => sceneScope(s.id)) ?? []
+  },
+  ready(store, scope): Ready {
+    const ep = episode(store)
+    const scene = ep?.scenes.find(s => sceneScope(s.id) === scope)
+    if (!ep || !scene) return { ok: false }
+    const place = scopeOf('loc', scene.location)
+    const brief = store.locked('entity_brief', place)
+    const desc = store.locked('entity_desc', place)
+    const picture = lockedImage(store, place)
+    if (!brief || !desc || !picture) return { ok: false }
+    return { ok: true, inputs: [ep.script.id, ep.rosterId, brief.id, desc.id, picture.lock.id] }
+  },
+  async run(env, scope, run, inputs) {
+    const { store } = env
+    if (!env.vision) throw new Error('没有配置视觉模型')
+    const scene = episode(store)!.scenes.find(s => sceneScope(s.id) === scope)!
+    const first = firstOnStage(store, scene)
+    const picture = store.artifact((store.artifact(inputs[4]!).payload as { image_id: number }).image_id)
+    const result = await env.vision({
+      card: CARDS.blocking!,
+      sections: [
+        { title: '这一场', body: `${scene.id}，地点：${scene.location}${scene.setting ? `\n${scene.setting}` : ''}` },
+        { title: '这一场的剧本', body: fmtBeats(store, scene.beats.map(b => b.id)) },
+        { title: '这一场的人物', body: Object.entries(first).map(([name, beat]) => `${name}：${beat === scene.beats[0]!.id ? `开场就在（${beat}）` : `${beat} 出场`}`).join('\n') },
+        { title: '地点的外观要点', body: text(store.artifact(inputs[2]!)) },
+        { title: '参考图', body: `图 1：${scene.location}的主图` },
+        ...revision(store, run, json),
+      ],
+      images: [store.mediaPath(picture.media_id!)],
+      data: { beats: scene.beats.map(b => b.id), first } satisfies BlockingData,
+      tag: `blocking-${scope.replaceAll('/', '-')}-${run.id}`,
+      nodeRunId: run.id,
+    })
+    return [store.addArtifact({ kind: 'blocking', scope, payload: result.output, inputs, prompt_version: result.promptVersion, node_run_id: run.id, created_by: 'model' }).id]
+  },
+}
+
 const timeline: NodeDef = {
   name: 'timeline',
   pool: 'text',
@@ -186,7 +288,9 @@ const timeline: NodeDef = {
       return lock ? [lock.id] : []
     })
     if (locks.length < present.length) return { ok: false }
-    return { ok: true, inputs: [planned.artifact.id, ...locks, ...(previous ? [previous.id] : [])] }
+    const staged = stagings(store, segment)
+    if (!staged) return { ok: false }
+    return { ok: true, inputs: [planned.artifact.id, ...locks, ...staged.map(s => s.blocking.id), ...(previous ? [previous.id] : [])] }
   },
   async run(env, scope, run, inputs) {
     const { store } = env
@@ -203,6 +307,8 @@ const timeline: NodeDef = {
       { title: '上一段最后一个镜头', body: previous ? lastCutBlurb(previous.payload as TimelineT) : '' },
       { title: '后一段', body: nextSeg?.summary ?? '' },
       { title: '出场的人物、地点、道具', body: presentNames(store, segment).join('、') },
+      { title: '地点的格局', body: segmentLocations(store, segment).map(l => `${l}\n${layout(text(store.locked('entity_brief', scopeOf('loc', l))!))}`).join('\n\n') },
+      { title: '站位', body: stagings(store, segment)!.map(s => stagingOf(s.scene, s.blocking.payload as BlockingT, segment)).join('\n\n') },
       { title: '这一段开始时的状态', body: stateBefore(store, segment.beats[0]!).join('\n') },
       ...revision(store, run, json),
     ]
@@ -295,8 +401,17 @@ const view: NodeDef = {
     const refs = [{ label: `${location}的主图`, media: root.media_id! }, { label: '风格参考图', media: styleRefMedia(e) }]
     const prompt = imagePrompt(e.root, e.style, 'location-view', desc.output as string, refs.map(r => r.label))
     const drawn = await image(e.store, e.images, { type: 'location-view', prompt, params: imageParams('location-view'), references: refs.map(r => r.media), node_run_id: run.id, candidate: 1 }, e.sleep)
-    return [e.store.addArtifact({ kind: 'entity_image', scope, payload: { job_id: drawn.job, prompt }, media_id: drawn.media, inputs, node_run_id: run.id, created_by: 'model' }).id]
+    return [e.store.addArtifact({ kind: 'entity_image', scope, payload: { job_id: drawn.job, prompt, desc: desc.output }, media_id: drawn.media, inputs, node_run_id: run.id, created_by: 'model' }).id]
   },
+}
+
+/** What a cut's camera position shows, left to right, for a writer who cannot see its picture. */
+function viewText(store: Store, location: string, id: string): string {
+  const view = (store.locked('view_plan', scopeOf('loc', location))!.payload as ViewGroupsT).views.find(v => v.cuts.includes(id))!
+  if (view.name === MAIN_VIEW) return `主图：${text(store.locked('entity_desc', scopeOf('loc', location))!)}`
+  // Views drawn before 2026-10-28 kept only the whole prompt.
+  const picture = viewOf(store, location, id)!.picture!.image.payload as { desc?: string; prompt: string }
+  return `相机：${view.camera}\n这个机位的图：${picture.desc ?? picture.prompt}`
 }
 
 /** The pictures a keyframe is drawn from, as its description and its prompt number them. */
@@ -327,12 +442,15 @@ const kfdesc: NodeDef = {
     if (!at) return { ok: false }
     const place = viewOf(store, cutLocation(at.segment, at.cut), at.id)
     if (!place?.picture) return { ok: false }
+    const location = cutLocation(at.segment, at.cut)
     const briefs = [
       ...at.cut.present.characters.map(name => store.locked('entity_brief', lookAt(store, name, at.segment.beats[0]!))),
-      store.locked('entity_brief', scopeOf('loc', cutLocation(at.segment, at.cut))),
+      store.locked('entity_brief', scopeOf('loc', location)),
+      store.locked('entity_desc', scopeOf('loc', location)),
     ]
-    if (briefs.some(b => !b)) return { ok: false }
-    return { ok: true, inputs: [at.timeline.id, place.groups.id, place.picture.lock.id, ...briefs.map(b => b!.id)] }
+    const staged = stagings(store, at.segment, location)
+    if (briefs.some(b => !b) || !staged) return { ok: false }
+    return { ok: true, inputs: [at.timeline.id, place.groups.id, place.picture.lock.id, ...briefs.map(b => b!.id), ...staged.map(s => s.blocking.id)] }
   },
   async run(env, scope, run, inputs) {
     const { store } = env
@@ -341,7 +459,8 @@ const kfdesc: NodeDef = {
     const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
     const refs = keyframeLabels(store, scope).map((label, i) => `图 ${i + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', lookAt(store, name, segment.beats[0]!))!), '主色').replace('主色：', '')}`)
-    const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', cutLocation(segment, cut)))!), '陈设')
+    const location = cutLocation(segment, cut)
+    const brief = text(store.locked('entity_brief', scopeOf('loc', location))!)
     const atCut = cutState(store, scope)!
     const result = await env.text({
       card: CARDS['keyframe-desc']!,
@@ -349,7 +468,10 @@ const kfdesc: NodeDef = {
         { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
         { title: '参考图', body: refs.join('\n') },
         { title: '人物主色', body: colors.join('\n') },
-        { title: '场内陈设', body: furnishing },
+        { title: '这个视角', body: viewText(store, location, id) },
+        { title: '场内陈设', body: pick(brief, '陈设') },
+        { title: '光源', body: pick(brief, '光源') },
+        { title: '站位', body: stagings(store, segment, location)!.map(s => stagingOf(s.scene, s.blocking.payload as BlockingT, segment)).join('\n\n') },
         { title: '此刻的状态', body: atCut.join('\n') },
         ...revision(store, run, a => (a.payload as { text: string }).text),
       ],
@@ -393,4 +515,4 @@ const keyframe: NodeDef = {
   },
 }
 
-export const STORYBOARD_NODES: NodeDef[] = [plan, timeline, views, view, kfdesc, keyframe]
+export const STORYBOARD_NODES: NodeDef[] = [plan, blocking, timeline, views, view, kfdesc, keyframe]
