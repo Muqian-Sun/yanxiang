@@ -62,9 +62,9 @@ test('when rewriting does not bring it into range the screenplay is kept for the
 test('directions redone with a note carry the previous three and the note', async () => {
   const seen: Section[][] = []
   const base = writer([120], [])
-  const st = new Stories(ROOT, mkdtempSync(join(tmpdir(), 'yx-story-')), async (task, tag, sections, data, dir) => {
+  const st = new Stories(ROOT, mkdtempSync(join(tmpdir(), 'yx-story-')), async (task, tag, sections, data, dir, onText) => {
     if (task === 'story-directions') seen.push(sections)
-    return base(task, tag, sections, data, dir)
+    return base(task, tag, sections, data, dir, onText)
   })
   const { id } = st.start('废柴觉醒')
   await settle(st, id)
@@ -89,7 +89,7 @@ test('a story cut off while it was being written carries on from where it stoppe
   writeFileSync(path, JSON.stringify(cut))
   const calls: string[] = []
   const base = writer([120], [])
-  const again = new Stories(ROOT, dir, async (task, tag, sections, data, logDir) => { calls.push(task); return base(task, tag, sections, data, logDir) })
+  const again = new Stories(ROOT, dir, async (task, tag, sections, data, logDir, onText) => { calls.push(task); return base(task, tag, sections, data, logDir, onText) })
   expect(again.resumeInterrupted()).toEqual([id])
   await settle(again, id)
   const story = again.get(id)
@@ -116,9 +116,9 @@ test('after the creator\'s note the screenplay is rewritten once by that note an
 test('writing the same direction again carries the creator\'s notes into the new draft', async () => {
   const seen: Section[][] = []
   const base = writer([120], [])
-  const st = new Stories(ROOT, mkdtempSync(join(tmpdir(), 'yx-story-')), async (task, tag, sections, data, dir) => {
+  const st = new Stories(ROOT, mkdtempSync(join(tmpdir(), 'yx-story-')), async (task, tag, sections, data, dir, onText) => {
     if (task === 'script') seen.push(sections)
-    return base(task, tag, sections, data, dir)
+    return base(task, tag, sections, data, dir, onText)
   })
   const { id } = st.start('废柴觉醒')
   await settle(st, id)
@@ -134,4 +134,28 @@ test('writing the same direction again carries the creator\'s notes into the new
   st.choose(id, 0)
   await settle(st, id)
   expect(seen.at(-1)!.some(s => s.title === '创作者看过上一版后的意见')).toBe(false)
+})
+
+test('while a step writes, the story shows what it has written so far, and drops it when the step ends', async () => {
+  let release!: () => void
+  const base = writer([120], [])
+  const st = new Stories(ROOT, mkdtempSync(join(tmpdir(), 'yx-story-')), async (task, tag, sections, data, dir, onText) => {
+    if (task === 'story-setup') {
+      onText('世界一角：青')
+      await new Promise<void>(r => (release = r))
+    }
+    return base(task, tag, sections, data, dir, onText)
+  })
+  const { id } = st.start('废柴觉醒')
+  await settle(st, id)
+  st.choose(id, 0)
+  while (!release) await Bun.sleep(5)
+  const writing = st.get(id)
+  expect(writing.step).toBe('setup')
+  expect(writing.live!.text).toBe('世界一角：青')
+  expect(st.list()[0]!.live).toBeUndefined()
+  release()
+  await settle(st, id)
+  expect(st.get(id).live).toBeUndefined()
+  expect(JSON.parse(readFileSync(join(st.dir, id, 'story.json'), 'utf8')).live).toBeUndefined()
 })

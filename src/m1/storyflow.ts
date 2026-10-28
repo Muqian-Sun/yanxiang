@@ -29,19 +29,22 @@ export type Story = {
   /** What is being written now, or why the last step failed. */
   step?: string
   error?: string
+  /** While a step writes: what it has written so far and for how many seconds (not saved). */
+  live?: { text: string; seconds: number }
 }
 
 const length = `${SAMPLE.min}–${SAMPLE.max} 秒`
 export const fmtDirection = (d: Direction) => `标题：${d.title}\n梗概：${d.logline}\n主角的策略：${d.strategy}\n对抗：${d.opposition}\n代价：${d.cost}\n本集兑现：${d.payoff}\n开场画面：${d.opening}`
 
 /** One model call of the story half; tests pass a fake. */
-export type Writer = (task: string, tag: string, sections: Section[], data: unknown, logDir: string) => Promise<unknown>
+export type Writer = (task: string, tag: string, sections: Section[], data: unknown, logDir: string, onText: (text: string) => void) => Promise<unknown>
 
 /** Rewrites asked for when the extracted beats run outside the sample's length; a guess. */
 const FIT_ROUNDS = 2
 
 export class Stories {
   private readonly busy = new Set<string>()
+  private readonly live = new Map<string, { text: string; since: number }>()
   private readonly pair
   private readonly models
 
@@ -54,7 +57,7 @@ export class Stories {
   }
 
   list(): Story[] {
-    return readdirSync(this.dir).filter(id => existsSync(join(this.dir, id, 'story.json'))).sort().reverse().map(id => this.get(id))
+    return readdirSync(this.dir).filter(id => existsSync(join(this.dir, id, 'story.json'))).sort().reverse().map(id => ({ ...this.get(id), live: undefined }))
   }
 
   /**
@@ -84,7 +87,12 @@ export class Stories {
   }
 
   get(id: string): Story {
-    return { ...(JSON.parse(readFileSync(join(this.dir, id, 'story.json'), 'utf8')) as Story), ...(this.busy.has(id) ? {} : { step: undefined }) }
+    const live = this.live.get(id)
+    return {
+      ...(JSON.parse(readFileSync(join(this.dir, id, 'story.json'), 'utf8')) as Story),
+      ...(this.busy.has(id) ? {} : { step: undefined }),
+      live: live && { text: live.text, seconds: Math.round((Date.now() - live.since) / 1000) },
+    }
   }
 
   isBusy(id: string) {
@@ -101,8 +109,15 @@ export class Stories {
     const logDir = join(this.dir, story.id, 'logs')
     // Every call keeps its own log: a later rewrite must not overwrite the version the creator asked for.
     const logTag = existsSync(join(logDir, `${tag}.json`)) ? `${tag}-${new Date().toISOString().replace(/[-:.TZ]/g, '')}` : tag
-    if (this.writer) return (await this.writer(task, logTag, sections, data, logDir)) as T
-    return (await runTask<T>({ root: this.root, card: CARDS[task]!, sections, data, plugins: this.pair, models: this.models, logDir, tag: logTag })).output
+    const live = { text: '', since: Date.now() }
+    this.live.set(story.id, live)
+    const onText = (text: string) => (live.text = text)
+    try {
+      if (this.writer) return (await this.writer(task, logTag, sections, data, logDir, onText)) as T
+      return (await runTask<T>({ root: this.root, card: CARDS[task]!, sections, data, plugins: this.pair, models: this.models, logDir, tag: logTag, onText })).output
+    } finally {
+      this.live.delete(story.id)
+    }
   }
 
   /** Runs one step in the background; the page polls the story. A story runs one step at a time. */

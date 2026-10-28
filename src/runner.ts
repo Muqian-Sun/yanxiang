@@ -20,6 +20,8 @@ export type RunOptions = {
   images?: string[]
   /** Called with one human-readable line at each step of the call. */
   onEvent?: (line: string) => void
+  /** Called with everything written so far while the model writes; a rewrite starts again from empty. */
+  onText?: (text: string) => void
 }
 
 export type Attempt = { response: string; problems: Problems; tokensIn: number; tokensOut: number; ms: number }
@@ -62,7 +64,7 @@ export async function runTask<T = unknown>(options: RunOptions): Promise<RunResu
   const images = (options.images ?? []).map(path => ({ mime: path.endsWith('.png') ? 'image/png' : 'image/jpeg', base64: readFileSync(path).toString('base64') }))
   let message = user
   for (let attempt = 0; attempt <= REWRITES; attempt++) {
-    const reply = await complete(target, system, message, { maxTokens: card.maxTokens ?? 8000, images })
+    const reply = await complete(target, system, message, { maxTokens: card.maxTokens ?? 8000, images, onText: options.onText })
     const { value, problems: parseProblems } = parse(card, reply.text)
     const problems = parseProblems.length ? parseProblems : (card.checks?.(value as never, options.data as never) ?? [])
     attempts.push({ response: reply.text, problems, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut, ms: reply.ms })

@@ -217,6 +217,15 @@ video, audio { max-width: 100% }
 .story-row:hover { border-color: #d8ccb2 }
 .story-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .working { display: flex; align-items: center; gap: 12px; padding: 22px; color: var(--ink-2) }
+.live { padding: 0; overflow: hidden }
+.live .head { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line-2) }
+.live .head .sp { flex: 1 }
+.live .page { max-height: 62vh; overflow: auto }
+.live .page pre { white-space: pre-wrap; font: inherit; margin: 0 }
+.live .wait { color: var(--muted) }
+.caret { display: inline-block; width: 2px; height: 1em; background: var(--cinnabar); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(1) infinite }
+@keyframes blink { 50% { opacity: 0 } }
+.done-parts { margin-top: 16px; padding: 6px 18px }
 
 /* ---------- progress ---------- */
 .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px }
@@ -529,6 +538,30 @@ function stepsBar(s) {
     return '<span class="s ' + (now ? 'now' : done[k] ? 'done' : '') + '"><i>' + (now ? '<span class="spin" style="width:10px;height:10px;border-width:1.5px"></span>' : done[k] ? '✓' : i + 1) + '</i>' + v + '</span>'
   }).join('') + '</div>'
 }
+// What the step being written has put down so far, as the model writes it; JSON steps show what can be read of them.
+function livePane(s) {
+  const label = (STEPS.find(x => x[0] === s.step) || [, '剧本'])[1]
+  const live = s.live || { text: '', seconds: 0 }, t = live.text
+  let body
+  if (!t) body = '<div class="wait">在构思，字一出来就显示在这里…</div>'
+  else if (s.step === 'directions') {
+    const titles = [...t.matchAll(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map(m => m[1])
+    body = titles.length ? '<div class="wait">已经想好的方向：</div>' + titles.map((x, i) => '<div class="h">方向 ' + (i + 1) + '　' + esc(x) + '</div>').join('') : '<div class="wait">正在想第一个方向…</div>'
+  } else if (s.step === 'script-extract') body = '<div class="wait">已拆出 ' + (t.match(/"action"\s*:/g) || []).length + ' 拍</div>'
+  else if (s.step === 'script' || s.step === 'script-revised') body = formatScreenplay(t)
+  else body = '<pre>' + esc(t) + '</pre>'
+  return '<div class="card live"><div class="head"><span class="spin"></span><b>正在写「' + esc(label) + '」</b><span class="sp"></span><span class="muted small">' +
+    (t ? '已写 ' + t.length + ' 字 · ' : '') + '这一步 ' + live.seconds + ' 秒</span></div><div class="page" id="livebody">' + body + '<span class="caret"></span></div></div>'
+}
+// The parts already written while the rest is still being written.
+function doneParts(s) {
+  const parts = []
+  if (s.setup) parts.push(drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ws'))
+  if (s.draft && s.text !== s.draft) parts.push(drawer('剧本初稿', '<div class="page" style="padding:6px 0">' + formatScreenplay(s.draft) + '</div>', 'wd'))
+  if (s.review) parts.push(drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'wr'))
+  if (s.text && s.step === 'script-revised') parts.push(drawer('上一版剧本', '<div class="page" style="padding:6px 0">' + formatScreenplay(s.text) + '</div>', 'wt'))
+  return parts.length ? '<div class="card done-parts">' + parts.join('') + '</div>' : ''
+}
 function storyStatus(s) {
   if (s.busy) return '<span class="badge blue"><span class="spin" style="width:9px;height:9px;border-width:1.5px"></span>正在写</span>'
   if (s.project) return '<span class="badge jade">已建项目</span>'
@@ -577,14 +610,14 @@ function storyPage() {
   const s = ST
   let h = '<button class="btn ghost sm" onclick="backToStories()" style="margin-bottom:10px">' + icon('back') + '所有故事</button>' + stepsBar(s)
   if (s.error) h += '<div class="notice bad" style="margin-bottom:16px">' + icon('alert') + '<span>上一步出错了：' + esc(s.error) + '</span></div>'
-  if (s.busy && !s.directions) return h + '<div class="card working"><span class="spin"></span>正在出三个方向，大约半分钟…</div>'
+  if (s.busy && s.step === 'script-extract' && s.text) return h + livePane(s) + '<h3 class="sec">写好的剧本（正在拆成拍，拆完就能审）</h3><div class="card page">' + formatScreenplay(s.text) + '</div>' + doneParts(s)
+  if (s.busy) return h + livePane(s) + doneParts(s)
   if (s.directions && s.chosen === undefined) {
     return h + '<h3 class="sec">★2 挑一个方向</h3><div class="dirs">' + s.directions.map((d, i) => dirCard(d, i)).join('') + '</div>' +
       '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">都不满意？说说哪里不对</b>' +
       '<textarea id="dnote" data-keep="dnote" placeholder="例如：主角要更狠一点，别靠奇遇，靠他自己设的局"></textarea>' +
       '<div class="rvbar"><span class="hint">会带着这三个方向和你的意见，重新出三个</span><span class="sp"></span><button class="btn accent" onclick="redirectStory()">' + icon('redo') + '按意见重新出</button></div></div>'
   }
-  if (s.busy) return h + '<div class="card working"><span class="spin"></span><div><div>正在写「' + esc((STEPS.find(x => x[0] === s.step) || [, '剧本'])[1]) + '」</div><div class="muted small">整个剧本一般 3–6 分钟，写完自动显示</div></div></div>'
   const rewriteBtn = s.chosen !== undefined ? '<button class="btn" onclick="chooseDir(' + s.chosen + ', true)">' + icon('redo') + '从头重写这个方向' + (s.notes && s.notes.length ? '（带上你的意见）' : '') + '</button>' : ''
   if (!s.script && !s.text) return h + rewriteBtn
   if (!s.script) {
@@ -607,7 +640,7 @@ function storyPage() {
   h += '<h3 class="sec">★3 看剧本 · ' + esc(s.directions[s.chosen].title) + '</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div>' + rosterAside(s.script.roster, side) + '</div>'
   if (s.project) return h + '<div class="notice ok" style="margin-top:16px">' + icon('check') + '<span>已经建成项目，在左上角的项目里切过去看。</span></div>'
   h += '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：主角觉醒得太突然，前面要有铺垫"></textarea>' +
-    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button>' + rewriteBtn + '<span style="flex:1"></span><button class="btn accent" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 45–60 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button></div></div>'
+    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button>' + rewriteBtn + '<span style="flex:1"></span><button class="btn accent" onclick="makeProject()"' + (fits ? '' : ' disabled title="时长不在 ' + lo + '–' + hi + ' 秒，先按意见改"') + '>' + icon('check') + '用这个剧本建项目</button></div></div>'
   return h
 }
 
@@ -696,6 +729,8 @@ function snapshot() {
     keep: Object.fromEntries([...document.querySelectorAll('[data-keep]')].map(t => [t.dataset.keep, t.value])),
     focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.keep : null,
     y: window.scrollY,
+    // The live text follows the writing unless the creator has scrolled up in it to read.
+    live: (b => !b ? null : b.scrollHeight - b.scrollTop - b.clientHeight < 40 ? 'end' : b.scrollTop)(document.getElementById('livebody')),
   }
 }
 function restore(s) {
@@ -703,6 +738,8 @@ function restore(s) {
   s.rv.forEach(id => { const d = document.getElementById(id); if (d) d.classList.add('open') })
   for (const [k, v] of Object.entries(s.keep)) { const t = document.querySelector('[data-keep="' + CSS.escape(k) + '"]'); if (t) t.value = v }
   if (s.focus) { const t = document.querySelector('[data-keep="' + CSS.escape(s.focus) + '"]'); if (t) t.focus() }
+  const b = document.getElementById('livebody')
+  if (b) b.scrollTop = s.live === null || s.live === 'end' ? b.scrollHeight : s.live
   window.scrollTo(0, s.y)
 }
 function render() {

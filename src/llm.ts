@@ -59,7 +59,42 @@ function headers(provider: Resolved['provider'], key: string): Record<string, st
 
 export type Picture = { mime: string; base64: string }
 
-async function once(target: Resolved, key: string, system: string, user: string, maxTokens: number, timeoutMs: number, images: Picture[]): Promise<Completion> {
+/** An Anthropic answer read as server-sent events, `onText` getting everything written so far at each piece. */
+export async function streamed(response: Response, url: string, maxTokens: number, started: number, onText: (text: string) => void): Promise<Completion> {
+  let text = '', buffer = '', tokensIn = 0, tokensOut = 0, stop: string | undefined
+  const decoder = new TextDecoder()
+  const take = (line: string) => {
+    if (!line.startsWith('data:')) return
+    const event = JSON.parse(line.slice(5))
+    if (event.type === 'error') throw new LlmError(`${url} 流里报错：${JSON.stringify(event.error ?? event).slice(0, 300)}`, true)
+    if (event.type === 'message_start') tokensIn = event.message?.usage?.input_tokens ?? 0
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') text += event.delta.text
+    if (event.type === 'message_delta') {
+      stop = event.delta?.stop_reason ?? stop
+      tokensIn = event.usage?.input_tokens || tokensIn
+      tokensOut = event.usage?.output_tokens ?? tokensOut
+    }
+  }
+  try {
+    for await (const chunk of response.body!) {
+      const lines = (buffer + decoder.decode(chunk, { stream: true })).split('\n')
+      buffer = lines.pop()!
+      const before = text.length
+      lines.forEach(take)
+      if (text.length > before) onText(text)
+    }
+    take(buffer)
+  } catch (error) {
+    if (error instanceof LlmError) throw error
+    throw new LlmError(`读 ${url} 的流中断：${error instanceof Error ? error.message : String(error)}`, true)
+  }
+  if (stop === 'max_tokens') throw new LlmError(`输出写到 max_tokens（${maxTokens}）被截断`)
+  if (!stop) throw new LlmError(`${url} 的流没写完就断了`, true)
+  if (!text.trim()) throw new LlmError('模型返回了空内容', true)
+  return { text, tokensIn, tokensOut, ms: Date.now() - started }
+}
+
+async function once(target: Resolved, key: string, system: string, user: string, maxTokens: number, timeoutMs: number, images: Picture[], onText?: (text: string) => void): Promise<Completion> {
   const base = target.provider.baseUrl.replace(/\/$/, '')
   const anthropic = target.provider.protocol === 'anthropic'
   const url = anthropic ? `${base}/v1/messages` : `${base}/v1/chat/completions`
@@ -71,7 +106,7 @@ async function once(target: Resolved, key: string, system: string, user: string,
     ? [...images.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.base64 } })), { type: 'text', text: user }]
     : [...images.map(i => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })), { type: 'text', text: user }]
   const body = anthropic
-    ? { model: target.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }], metadata: { user_id: nonce } }
+    ? { model: target.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }], metadata: { user_id: nonce }, ...(onText ? { stream: true } : {}) }
     : { model: target.model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content }], user: nonce }
   const started = Date.now()
   let response: Response
@@ -80,6 +115,7 @@ async function once(target: Resolved, key: string, system: string, user: string,
   } catch (error) {
     throw new LlmError(`请求 ${url} 失败：${error instanceof Error ? error.message : String(error)}`, true)
   }
+  if (response.ok && anthropic && onText) return streamed(response, url, maxTokens, started, onText)
   const raw = await response.text()
   if (!response.ok) throw new LlmError(`${url} 返回 ${response.status}：${raw.slice(0, 300)}`, response.status === 429 || response.status >= 500)
   const data = JSON.parse(raw)
@@ -94,16 +130,22 @@ async function once(target: Resolved, key: string, system: string, user: string,
   if (choice?.finish_reason === 'length') throw new LlmError(`输出写到 max_tokens（${maxTokens}）被截断`)
   const text = choice?.message?.content ?? ''
   if (!text.trim()) throw new LlmError('模型返回了空内容', true)
+  // The OpenAI protocol is not streamed (untried against a gateway); the whole answer shows at once.
+  onText?.(text)
   return { text, tokensIn: data.usage?.prompt_tokens ?? 0, tokensOut: data.usage?.completion_tokens ?? 0, ms }
 }
 
-/** One model call; network errors, 429 and 5xx are retried up to three times. */
-export async function complete(target: Resolved, system: string, user: string, options: { maxTokens?: number; timeoutMs?: number; images?: Picture[] } = {}): Promise<Completion> {
+/**
+ * One model call; network errors, 429 and 5xx are retried up to three times. With `onText` the answer
+ * streams, and `onText` gets everything written so far; a retry starts again from empty.
+ */
+export async function complete(target: Resolved, system: string, user: string, options: { maxTokens?: number; timeoutMs?: number; images?: Picture[]; onText?: (text: string) => void } = {}): Promise<Completion> {
   const key = readKey(target.provider.keyRef)
   const delays = [2000, 4000, 8000]
   for (let attempt = 0; ; attempt++) {
     try {
-      return await once(target, key, system, user, options.maxTokens ?? 8000, options.timeoutMs ?? 600_000, options.images ?? [])
+      options.onText?.('')
+      return await once(target, key, system, user, options.maxTokens ?? 8000, options.timeoutMs ?? 600_000, options.images ?? [], options.onText)
     } catch (error) {
       if (!(error instanceof LlmError) || !error.retryable || attempt >= delays.length) throw error
       await new Promise(resolve => setTimeout(resolve, delays[attempt]))
