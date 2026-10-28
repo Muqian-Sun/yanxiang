@@ -104,3 +104,20 @@ test('reopening a project keeps its data and does not migrate twice', () => {
   const again = new Store(s.dir)
   expect(again.artifact(id).kind).toBe('script')
 })
+
+test('a write waits for another process holding the database instead of failing', async () => {
+  const s = fresh()
+  const flag = join(s.dir, 'holding')
+  const child = Bun.spawn(['bun', '-e', `
+    const { DatabaseSync } = require('node:sqlite')
+    const db = new DatabaseSync(${JSON.stringify(join(s.dir, 'project.db'))})
+    db.exec('BEGIN IMMEDIATE')
+    require('node:fs').writeFileSync(${JSON.stringify(flag)}, '1')
+    Bun.sleepSync(800)
+    db.exec('COMMIT')
+  `])
+  while (!(await Bun.file(flag).exists())) await Bun.sleep(20)
+  expect(() => s.grant('e1', 'image', 1)).not.toThrow()
+  await child.exited
+  expect(s.permitsLeft('e1', 'image')).toBe(1)
+})

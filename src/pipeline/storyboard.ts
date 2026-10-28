@@ -2,7 +2,7 @@ import { imagePrompt } from '../compose.js'
 import { image } from '../jobs/images.js'
 import type { Section } from '../runner.js'
 import type { Artifact, Store } from '../store/store.js'
-import { CARDS, MAIN_VIEW, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
+import { CARDS, MAIN_VIEW, voicedPerBeat, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
 import type { NodeDef, Ready } from './engine.js'
 import {
   EPISODE, episode, fmtBeats, imageParams, lockedImage, names, pick, revision, scopeOf, styleRefMedia, text,
@@ -13,10 +13,10 @@ type Segment = PlanT['segments'][number]
 type Cut = TimelineT['cuts'][number]
 
 const json = (a: Artifact) => JSON.stringify(a.payload, null, 2)
-const segmentScope = (id: string) => `${EPISODE}/${id}`
+export const segmentScope = (id: string) => `${EPISODE}/${id}`
 /** How a cut is named to the writers, and the tail of its scope. */
-const cutId = (segmentId: string, index: number) => `${segmentId}/c${index}`
-const cutScope = (segmentId: string, index: number) => `${EPISODE}/${cutId(segmentId, index)}`
+export const cutId = (segmentId: string, index: number) => `${segmentId}/c${index}`
+export const cutScope = (segmentId: string, index: number) => `${EPISODE}/${cutId(segmentId, index)}`
 const viewScope = (location: string, name: string) => `${scopeOf('loc', location)}/${name}`
 
 function parseCut(scope: string) {
@@ -31,13 +31,13 @@ function parseView(scope: string) {
   return { location, name }
 }
 
-function planOf(store: Store): { artifact: Artifact; plan: PlanT } | undefined {
+export function planOf(store: Store): { artifact: Artifact; plan: PlanT } | undefined {
   const artifact = store.locked('segment_plan', EPISODE)
   return artifact ? { artifact, plan: artifact.payload as PlanT } : undefined
 }
 
 /** Changes accumulated from the script up to, but not including, this beat. */
-function stateBefore(store: Store, beatId: string): string[] {
+export function stateBefore(store: Store, beatId: string): string[] {
   const changes: string[] = []
   for (const beat of episode(store)!.beats) {
     if (beat.id === beatId) break
@@ -46,16 +46,26 @@ function stateBefore(store: Store, beatId: string): string[] {
   return changes
 }
 
+/** The locations a segment's beats are at, in order; a segment can cross scenes (segment plan). */
+export function segmentLocations(store: Store, segment: Segment): string[] {
+  const beats = episode(store)!.beats.filter(b => segment.beats.includes(b.id))
+  return [...new Set([segment.location, ...beats.map(b => b.location)])]
+}
+
+/** Where a shot is: its own location when the segment crosses scenes, else the segment's (timelines before 2026-10-28 have none). */
+export const cutLocation = (segment: Segment, cut: Cut) => cut.location ?? segment.location
+
 function presentNames(store: Store, segment: Segment): string[] {
   const ep = episode(store)!
   const beats = ep.beats.filter(b => segment.beats.includes(b.id))
   const roster = [...ep.roster.characters.map(c => c.name), ...ep.roster.locations.map(l => l.name), ...ep.roster.props.map(p => p.name)]
-  return roster.filter(name => name === segment.location || beats.some(b => b.action.includes(name) || b.lines.some(l => l.speaker === name || l.text.includes(name))))
+  const here = segmentLocations(store, segment)
+  return roster.filter(name => here.includes(name) || beats.some(b => b.action.includes(name) || b.lines.some(l => l.speaker === name || l.text.includes(name))))
 }
 
 function lastCutBlurb(tl: TimelineT): string {
   const cut = tl.cuts.at(-1)!
-  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后一秒：${tl.timeline.at(-1)?.text ?? ''}`
+  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后一秒：${tl.timeline.at(-1)?.text ?? ''}\n底声：${tl.ambience}`
 }
 
 function rootLocks(store: Store): number[] | undefined {
@@ -87,8 +97,19 @@ function cutAt(store: Store, scope: string) {
   return segment && timeline && cut ? { segment, timeline, cut, id: cutId(segmentId, cutIndex) } : undefined
 }
 
+/**
+ * The picture that stands for a person in a cut: the turnaround when the cut shows their back
+ * (creator, 2026-10-28: a back view must come from the turnaround), else the portrait.
+ */
+export function figure(store: Store, cut: Cut, name: string) {
+  // Timelines written before backs existed (2026-10-28) are stored without it.
+  const back = (cut.present.backs ?? []).includes(name)
+  const scope = back ? `${scopeOf('char', name)}/三视图` : scopeOf('char', name)
+  return { label: back ? `${name}的三视图` : `${name}的定妆照`, picture: lockedImage(store, scope) }
+}
+
 /** The camera position a cut was grouped into, and the picture standing for it once locked. */
-function viewOf(store: Store, location: string, id: string) {
+export function viewOf(store: Store, location: string, id: string) {
   const groups = store.locked('view_plan', scopeOf('loc', location))
   const view = (groups?.payload as ViewGroupsT | undefined)?.views.find(v => v.cuts.includes(id))
   if (!groups || !view) return undefined
@@ -114,7 +135,7 @@ const plan: NodeDef = {
   async run(env, scope, run, inputs) {
     const { store } = env
     const ep = episode(store)!
-    const project = store.project() as { seconds_min: number; seconds_max: number }
+    const project = store.project()
     const entities = [...names(store, 'char'), ...names(store, 'loc'), ...names(store, 'prop')]
     const result = await env.text({
       card: CARDS['segment-plan']!,
@@ -125,7 +146,7 @@ const plan: NodeDef = {
         { title: '单集时长', body: `${project.seconds_min}–${project.seconds_max} 秒` },
         ...revision(store, run, json),
       ],
-      data: { beats: ep.beats.map(b => b.id), lines: [] as string[], min: project.seconds_min, max: project.seconds_max, locations: names(store, 'loc') },
+      data: { beats: ep.beats.map(b => b.id), voiced: voicedPerBeat(ep.beats), min: project.seconds_min, max: project.seconds_max, locations: names(store, 'loc') },
       tag: `segment-plan-${scope}-${run.id}`,
       nodeRunId: run.id,
     })
@@ -166,7 +187,7 @@ const timeline: NodeDef = {
     const nextSeg = planned.plan.segments[index + 1]
     const previous = segment.continues && prevSeg ? store.locked('timeline', segmentScope(prevSeg.id)) : undefined
     const sections: Section[] = [
-      { title: '这一段', body: `${segment.id}，${segment.seconds} 秒，地点：${segment.location}${segment.continues ? '，承接上一段' : ''}\n概要：${segment.summary}` },
+      { title: '这一段', body: `${segment.id}，${segment.seconds} 秒，地点：${segmentLocations(store, segment).join(' → ')}${segment.continues ? '，承接上一段' : ''}\n概要：${segment.summary}` },
       { title: '这一段的剧本', body: fmtBeats(store, segment.beats) },
       { title: '前一段', body: prevSeg?.summary ?? '' },
       { title: '上一段最后一个镜头', body: previous ? lastCutBlurb(previous.payload as TimelineT) : '' },
@@ -179,7 +200,7 @@ const timeline: NodeDef = {
     const result = await env.text({
       card: CARDS.timeline!,
       sections,
-      data: { seconds: segment.seconds, lines },
+      data: { seconds: segment.seconds, lines, characters: names(store, 'char'), props: names(store, 'prop'), locations: segmentLocations(store, segment) },
       tag: `timeline-${scope.replaceAll('/', '-')}-${run.id}`,
       nodeRunId: run.id,
     })
@@ -193,20 +214,20 @@ const views: NodeDef = {
   pool: 'text',
   output: 'view_plan',
   scopes(store) {
-    return [...new Set(planOf(store)?.plan.segments.map(s => scopeOf('loc', s.location)) ?? [])]
+    return [...new Set(planOf(store)?.plan.segments.flatMap(s => segmentLocations(store, s).map(l => scopeOf('loc', l))) ?? [])]
   },
   ready(store, scope): Ready {
     const planned = planOf(store)
     const brief = store.locked('entity_brief', scope)
     if (!planned || !brief) return { ok: false }
-    const here = planned.plan.segments.filter(s => scopeOf('loc', s.location) === scope)
+    const here = planned.plan.segments.filter(s => segmentLocations(store, s).some(l => scopeOf('loc', l) === scope))
     const timelines = here.map(s => store.locked('timeline', segmentScope(s.id)))
     if (timelines.some(t => !t)) return { ok: false }
     return { ok: true, inputs: [brief.id, ...timelines.map(t => t!.id)] }
   },
   async run(env, scope, run, inputs) {
     const { store } = env
-    const cuts = keyframeCuts(store).filter(c => scopeOf('loc', c.segment.location) === scope)
+    const cuts = keyframeCuts(store).filter(c => scopeOf('loc', cutLocation(c.segment, c.cut)) === scope)
     const result = await env.text({
       card: CARDS['view-groups']!,
       sections: [
@@ -227,7 +248,9 @@ const view: NodeDef = {
   pool: 'image',
   output: 'entity_image',
   review: 6,
-  images: 1,
+  paid: { pool: 'image', count: 1 },
+  // Its run writes the view's description from the note before drawing, so the note stays on the picture.
+  reviseVia: (_store, a) => a,
   scopes(store) {
     return views.scopes(store).flatMap(scope => {
       const groups = store.locked('view_plan', scope)?.payload as ViewGroupsT | undefined
@@ -276,11 +299,11 @@ const kfdesc: NodeDef = {
   ready(store, scope): Ready {
     const at = cutAt(store, scope)
     if (!at) return { ok: false }
-    const place = viewOf(store, at.segment.location, at.id)
+    const place = viewOf(store, cutLocation(at.segment, at.cut), at.id)
     if (!place?.picture) return { ok: false }
     const briefs = [
       ...at.cut.present.characters.map(name => store.locked('entity_brief', scopeOf('char', name))),
-      store.locked('entity_brief', scopeOf('loc', at.segment.location)),
+      store.locked('entity_brief', scopeOf('loc', cutLocation(at.segment, at.cut))),
     ]
     if (briefs.some(b => !b)) return { ok: false }
     return { ok: true, inputs: [at.timeline.id, place.groups.id, place.picture.lock.id, ...briefs.map(b => b!.id)] }
@@ -291,13 +314,13 @@ const kfdesc: NodeDef = {
     const tl = timeline.payload as TimelineT
     const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
     const refs = [
-      ...cut.present.characters.map(name => `${name}的定妆照`),
-      viewOf(store, segment.location, id)!.label,
+      ...cut.present.characters.map(name => figure(store, cut, name).label),
+      viewOf(store, cutLocation(segment, cut), id)!.label,
       ...cut.present.props.map(name => `${name}的设定图`),
       '风格参考图',
     ].map((label, i) => `图 ${i + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', scopeOf('char', name))!), '主色').replace('主色：', '')}`)
-    const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', segment.location))!), '陈设')
+    const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', cutLocation(segment, cut)))!), '陈设')
     const atCut = [...stateBefore(store, segment.beats[0]!), ...tl.timeline.filter(e => e.second < cut.start).flatMap(e => e.changes)]
     const result = await env.text({
       card: CARDS['keyframe-desc']!,
@@ -321,15 +344,16 @@ const keyframe: NodeDef = {
   pool: 'image',
   output: 'keyframe',
   review: 6,
-  images: 1,
+  paid: { pool: 'image', count: 1 },
+  reviseVia: (store, a) => store.locked('keyframe_desc', a.scope),
   scopes: kfdesc.scopes,
   ready(store, scope): Ready {
     const desc = store.locked('keyframe_desc', scope)
     const at = cutAt(store, scope)
     if (!desc || !at) return { ok: false }
     const style = store.locked('style_ref', 'p')
-    const place = viewOf(store, at.segment.location, at.id)
-    const chars = at.cut.present.characters.map(name => lockedImage(store, scopeOf('char', name)))
+    const place = viewOf(store, cutLocation(at.segment, at.cut), at.id)
+    const chars = at.cut.present.characters.map(name => figure(store, at.cut, name).picture)
     const props = at.cut.present.props.map(name => lockedImage(store, scopeOf('prop', name)))
     if (!style || !place?.picture || chars.some(c => !c) || props.some(p => !p)) return { ok: false }
     return { ok: true, inputs: [desc.id, place.picture.lock.id, style.id, ...chars.map(c => c!.lock.id), ...props.map(p => p!.lock.id)] }
@@ -341,8 +365,8 @@ const keyframe: NodeDef = {
     const chars = inputs.slice(3, 3 + cut.present.characters.length)
     const props = inputs.slice(3 + cut.present.characters.length)
     const refs = [
-      ...chars.map((lockId, i) => ({ label: `${cut.present.characters[i]}的定妆照`, media: mediaOf(lockId) })),
-      { label: viewOf(e.store, segment.location, id)!.label, media: mediaOf(inputs[1]!) },
+      ...chars.map((lockId, i) => ({ label: figure(e.store, cut, cut.present.characters[i]!).label, media: mediaOf(lockId) })),
+      { label: viewOf(e.store, cutLocation(segment, cut), id)!.label, media: mediaOf(inputs[1]!) },
       ...props.map((lockId, i) => ({ label: `${cut.present.props[i]}的设定图`, media: mediaOf(lockId) })),
       { label: '风格参考图', media: styleRefMedia(e) },
     ]

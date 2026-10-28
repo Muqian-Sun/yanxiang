@@ -57,16 +57,22 @@ function headers(provider: Resolved['provider'], key: string): Record<string, st
   return { 'content-type': 'application/json', ...auth, ...(provider.protocol === 'anthropic' ? { 'anthropic-version': '2023-06-01' } : {}) }
 }
 
-async function once(target: Resolved, key: string, system: string, user: string, maxTokens: number, timeoutMs: number): Promise<Completion> {
+export type Picture = { mime: string; base64: string }
+
+async function once(target: Resolved, key: string, system: string, user: string, maxTokens: number, timeoutMs: number, images: Picture[]): Promise<Completion> {
   const base = target.provider.baseUrl.replace(/\/$/, '')
   const anthropic = target.provider.protocol === 'anthropic'
   const url = anthropic ? `${base}/v1/messages` : `${base}/v1/chat/completions`
   // Qiniu's gateway returns its cached answer for a byte-identical request (2026-10-27: 0.2 s, same text),
   // so a rewrite or a retry would come back unchanged. A per-call id keeps every call a real generation.
   const nonce = `yanxiang-${randomUUID()}`
+  // Pictures go before the text, each as its own block (the vision model reads them in order).
+  const content = !images.length ? user : anthropic
+    ? [...images.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.base64 } })), { type: 'text', text: user }]
+    : [...images.map(i => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })), { type: 'text', text: user }]
   const body = anthropic
-    ? { model: target.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }], metadata: { user_id: nonce } }
-    : { model: target.model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], user: nonce }
+    ? { model: target.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }], metadata: { user_id: nonce } }
+    : { model: target.model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content }], user: nonce }
   const started = Date.now()
   let response: Response
   try {
@@ -92,12 +98,12 @@ async function once(target: Resolved, key: string, system: string, user: string,
 }
 
 /** One model call; network errors, 429 and 5xx are retried up to three times. */
-export async function complete(target: Resolved, system: string, user: string, options: { maxTokens?: number; timeoutMs?: number } = {}): Promise<Completion> {
+export async function complete(target: Resolved, system: string, user: string, options: { maxTokens?: number; timeoutMs?: number; images?: Picture[] } = {}): Promise<Completion> {
   const key = readKey(target.provider.keyRef)
   const delays = [2000, 4000, 8000]
   for (let attempt = 0; ; attempt++) {
     try {
-      return await once(target, key, system, user, options.maxTokens ?? 8000, options.timeoutMs ?? 600_000)
+      return await once(target, key, system, user, options.maxTokens ?? 8000, options.timeoutMs ?? 600_000, options.images ?? [])
     } catch (error) {
       if (!(error instanceof LlmError) || !error.retryable || attempt >= delays.length) throw error
       await new Promise(resolve => setTimeout(resolve, delays[attempt]))

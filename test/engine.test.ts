@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImageRequest } from '../src/jobs/images.js'
-import { Engine, type TextRunner } from '../src/pipeline/engine.js'
+import { Engine, type NodeDef, type TextRunner } from '../src/pipeline/engine.js'
 import { ENTITY_NODES, type EntityEnv } from '../src/pipeline/entities.js'
 import { loadPlugins } from '../src/plugins.js'
 import type { Section } from '../src/runner.js'
@@ -38,7 +38,7 @@ function fakeText(calls: { task: string; sections: Section[] }[] = []): TextRunn
     // A creator's instruction changes the design; the note for an upstream change alone does not. A description follows its brief.
     const asked = sections.find(s => s.title === '创作者的修改意见')?.body
     const change = asked && !asked.startsWith('它用到的上游') ? `\n修改：${asked}` : ''
-    const output = card.name === 'character-design' ? `脸型：长脸\n主色：白\n区分：散发${change}` : card.name === 'location-design' ? `陈设：石台居中\n道具位置：石台在洞中央${change}` : card.name === 'prop-design' ? `形制：长方${change}` : `${card.name}：${sections[0]!.body}`
+    const output = card.name === 'character-design' ? `脸型：长脸\n身高：比门框矮半头\n主色：白\n区分：散发${change}` : card.name === 'location-design' ? `陈设：石台居中\n道具位置：石台在洞中央${change}` : card.name === 'prop-design' ? `形制：长方${change}` : `${card.name}：${sections[0]!.body}`
     return { output, raw: output, attempts: [], system: '', user: '', promptVersion: 'v', model: 'fake' }
   }
 }
@@ -80,10 +80,10 @@ test('the second character is designed after the first, seeing its colours', asy
   expect(store.latest('entity_brief', 'e1/char/柳含烟')).toBeUndefined()
   await round(e)
   const second = calls.find(c => c.task === 'character-design' && c.sections[0]!.body.startsWith('柳含烟'))!
-  expect(second.sections.find(s => s.title === '同集其他人物')!.body).toBe('谢无咎：主色 白；散发')
+  expect(second.sections.find(s => s.title === '同集其他人物')!.body).toBe('谢无咎：主色 白；散发；身高 比门框矮半头')
 })
 
-test('props are designed in order, and a location waits for its props and is given their briefs', async () => {
+test('props are designed in order, and a location waits for its props and is told who holds them', async () => {
   const store = project()
   const calls: { task: string; sections: Section[] }[] = []
   const e = engine(store, fakeText(calls))
@@ -94,7 +94,22 @@ test('props are designed in order, and a location waits for its props and is giv
   expect(letter.sections.find(s => s.title === '已设计的道具')!.body).toBe('石台\n形制：长方')
   await round(e)
   const cave = calls.find(c => c.task === 'location-design')!
-  expect(cave.sections.find(s => s.title === '场内的关键道具')!.body).toBe('石台（固定在洞中央）\n形制：长方\n\n婚书（柳含烟藏在袖中）\n形制：长方')
+  expect(cave.sections.find(s => s.title === '场内的关键道具')!.body).toBe('石台：固定在洞中央\n婚书：柳含烟藏在袖中')
+})
+
+test('a location is designed from the episode setup and the screenplay\'s setting, as in the location experiments', async () => {
+  const store = project()
+  const setup = store.addArtifact({ kind: 'setup', scope: 'e1', payload: { text: '世界一角：青冥宗\n规则：同心印\n地点：\n封剑洞：青冥宗禁地，五百年无人\n独有时刻：膝印' }, status: 'locked', created_by: 'user' })
+  const script = store.locked('script', 'e1')!
+  store.db.prepare('UPDATE artifact SET payload = ? WHERE id = ?').run(JSON.stringify({ scenes: [{ ...SCRIPT.scenes[0], setting: '洞顶垂下四根锁链。' }] }), script.id)
+  const calls: { task: string; sections: Section[] }[] = []
+  const e = engine(store, fakeText(calls))
+  for (let i = 0; i < 3; i++) await round(e)
+  const cave = calls.find(c => c.task === 'location-design')!
+  expect(cave.sections.map(s => s.title)).toEqual(['地点', '本集设定里的世界和地点', '剧本里这个地点的环境', '在这里发生的剧情', '场内的关键道具', '已设计的地点'])
+  expect(cave.sections[1]!.body).toBe('世界一角：青冥宗\n\n地点：\n封剑洞：青冥宗禁地，五百年无人')
+  expect(cave.sections[2]!.body).toBe('洞顶垂下四根锁链。')
+  expect(store.inputsOf(store.latest('entity_brief', 'e1/loc/封剑洞')!.id)).toContain(setup.id)
 })
 
 test('nothing is drawn without permission, and two candidates take two units', async () => {
@@ -193,7 +208,7 @@ test('a design that went stale because an upstream changed is rewritten from its
   await round(e)
   const redo = calls.filter(c => c.task === 'character-design' && c.sections[0]!.body.startsWith('柳含烟')).at(-1)!
   const tail = redo.sections.slice(-2)
-  expect(tail[0]).toEqual({ title: '上一版', body: '脸型：长脸\n主色：白\n区分：散发' })
+  expect(tail[0]).toEqual({ title: '上一版', body: '脸型：长脸\n身高：比门框矮半头\n主色：白\n区分：散发' })
   expect(tail[1]!.title).toBe('创作者的修改意见')
   expect(tail[1]!.body).toContain('照上一版写')
   expect(tail[1]!.body).toContain('有新版本的上游：谢无咎的外观设计（第 2 版）')
@@ -305,4 +320,46 @@ test('a failed node waits for retry', async () => {
   expect(store.latestNodeRun('brief', 'e1/prop/石台')!.id).toBe(run.id)
   e.retry(run.id)
   expect(store.nodeRun(run.id).status).toBe('queued')
+})
+
+test('a node whose readiness check throws is reported once and skipped; the others still run', async () => {
+  const store = project()
+  const events: string[] = []
+  const bad: NodeDef = { name: 'bad', pool: 'text', output: 'bad_out', scopes: () => ['e1'], ready() { throw new Error('旧数据缺字段') }, run: async () => [] }
+  const good: NodeDef = { name: 'good', pool: 'text', output: 'good_out', scopes: () => ['e1'], ready: () => ({ ok: true, inputs: [] }), run: async (env, scope, run) => [env.store.addArtifact({ kind: 'good_out', scope, payload: {}, node_run_id: run.id, created_by: 'program' }).id] }
+  const e = new Engine({ store, root: ROOT, text: fakeText(), images: fakeImages(), style } as EntityEnv, [bad, good], ev => events.push(`${ev.type} ${ev.node} ${ev.detail ?? ''}`))
+  expect(() => e.tick()).not.toThrow()
+  await e.settle()
+  expect(() => e.tick()).not.toThrow()
+  expect(store.locked('good_out', 'e1')).toBeTruthy()
+  expect(e.broken.get('bad e1')).toBe('旧数据缺字段')
+  expect(events.filter(x => x.startsWith('failed bad'))).toEqual(['failed bad 调度时出错：旧数据缺字段'])
+})
+
+test('a note on a portrait rewrites its description, and the picture is drawn again from it; a turnaround takes no note', async () => {
+  const store = project()
+  const calls: { task: string; sections: Section[] }[] = []
+  const images = fakeImages()
+  const e = engine(store, fakeText(calls), images)
+  for (let i = 0; i < 3; i++) {
+    await round(e)
+    approveAll(e, store, 4)
+  }
+  store.grant('e1', 'image', 20)
+  await round(e)
+  const review = store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!
+  expect(e.revisable(review.artifact_ids[0]!)).toBe(true)
+  e.revise(review.artifact_ids[0]!, '头发改成半束', review.id)
+  expect(store.latestNodeRun('desc', 'e1/char/谢无咎')!.instruction).toBe('头发改成半束')
+  await round(e)
+  const rewrite = calls.filter(c => c.task === 'portrait-desc').at(-1)!
+  expect(rewrite.sections.find(s => s.title === '创作者的修改意见')!.body).toBe('头发改成半束')
+  const drawn = images.submits.length
+  await round(e)
+  expect(images.submits.length).toBe(drawn + 2)
+  e.pick(store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!.id, store.latest('entity_image', 'e1/char/谢无咎', ['draft'])!.id)
+  await round(e)
+  const turnaround = store.openReviews().find(r => r.scope === 'e1/char/谢无咎/三视图')!
+  expect(e.revisable(turnaround.artifact_ids[0]!)).toBe(false)
+  expect(() => e.revise(turnaround.artifact_ids[0]!, '换个角度', turnaround.id)).toThrow('只能「重出」')
 })

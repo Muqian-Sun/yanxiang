@@ -36,11 +36,116 @@ function lineList(required: string[]) {
   }
 }
 
+const startsWithKey = (line: string, key: string) => line.startsWith(`${key}：`) || line.startsWith(`${key}:`)
+
+/** Every key must open a line of its own; the body under a key may run over several lines. */
+function headed(keys: readonly string[]) {
+  return (out: string): Problems => {
+    const lines = out.split('\n').map(line => line.trim())
+    const missing = keys.filter(key => !lines.some(line => startsWithKey(line, key)))
+    return missing.length ? [`缺少这几项：${missing.join('、')}。每一项另起一行，以「项名：」开头`] : []
+  }
+}
+
+/** Names the prompts borrow from 《凡人修仙传》 for their examples (script.md, keyframe-desc.md, the genre's sample); a story must not take them. */
+const EXAMPLE_NAMES = ['韩立', '墨大夫', '墨居仁', '张铁', '厉飞雨', '南宫婉']
+
+function noExampleNames(out: string): Problems {
+  const hit = EXAMPLE_NAMES.filter(name => out.includes(name))
+  return hit.length ? [`这些是提示词示例里《凡人修仙传》的人名：${hit.join('、')}。换成本故事自己的名字`] : []
+}
+
+/** A review is 「无」 or lines of 「场N｜原句｜问题｜改法」. */
+function reviewList(out: string): Problems {
+  const lines = out.split('\n').map(line => line.trim()).filter(Boolean)
+  if (lines.length === 1 && lines[0] === '无') return []
+  // The quote may span scenes (「场2｜……／场3｜……」); the line starts at a scene and ends with the problem and the fix.
+  const bad = lines.filter(line => !/^场\d+[^｜]*｜.+｜[^｜]+｜[^｜]+$/.test(line))
+  const problems: Problems = bad.length ? [`这些行不是「场N｜原句｜问题｜改法」的格式：${bad.slice(0, 3).join(' / ')}`] : []
+  if (lines.length > REVIEW_MAX) problems.push(`写了 ${lines.length} 条，最多 ${REVIEW_MAX} 条：只留最伤的`)
+  return problems
+}
+/** The review prompt's own cap (tested in runs/ab-review); the rewrite takes only the worst problems. */
+const REVIEW_MAX = 10
+
+export const SETUP_KEYS = ['世界一角', '规则', '人物', '真相', '地点', '独有时刻'] as const
+
+/** One item of the episode setup, from its key line up to the next key line. */
+export function setupSection(text: string, key: (typeof SETUP_KEYS)[number]): string {
+  const lines = text.split('\n')
+  const start = lines.findIndex(line => startsWithKey(line.trim(), key))
+  if (start < 0) return ''
+  const end = lines.findIndex((line, i) => i > start && SETUP_KEYS.some(k => startsWithKey(line.trim(), k)))
+  return lines.slice(start, end < 0 ? undefined : end).join('\n').trim()
+}
+
+export type ScreenplayLine = { speaker: string; text: string; vo?: boolean }
+export type ScreenplayScene = { heading: string; location: string; setting: string; lines: ScreenplayLine[] }
+
+const HEADING = /^场\d+\s/
+const DIALOGUE = /^([^：:△[\]，。]{1,16})[：:](.+)$/
+const NOTE_BEFORE = /^[（(][^）)]*[）)]\s*/
+const NOTE_AFTER = /\s*[（(][^）)]*[）)]$/
+
+/**
+ * Reads the written screenplay (script.md's format): 「场N 内 · 地点 · 时辰」 headings, the setting paragraph
+ * right under each, then 「△」 actions, 「人名：台词」 lines and 「[变化]」 lines. A line that is none of these is
+ * reported rather than guessed at, so the extraction never works from a misread screenplay.
+ */
+export function screenplay(text: string): { scenes: ScreenplayScene[]; problems: Problems } {
+  const scenes: ScreenplayScene[] = []
+  const strange: string[] = []
+  let scene: ScreenplayScene | undefined
+  let atHeading = false
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (HEADING.test(line)) {
+      const parts = line.replace(HEADING, '').split('·').map(part => part.trim())
+      scene = { heading: line, location: parts.length === 3 ? parts[1]! : '', setting: '', lines: [] }
+      scenes.push(scene)
+      atHeading = true
+      continue
+    }
+    const first = atHeading
+    atHeading = false
+    if (!scene) {
+      strange.push(line)
+      continue
+    }
+    if (line.startsWith('△') || line.startsWith('[变化]')) continue
+    const said = line.match(DIALOGUE)
+    // The setting paragraph may itself hold a colon (「洞口刻着四个字：镇魔」); right under a heading only a short line reads as dialogue.
+    if (said && (!first || (said[1]!.trim().length <= 8 && line.length <= 60))) {
+      const who = said[1]!.trim()
+      const line: ScreenplayLine = { speaker: who.replace(NOTE_AFTER, ''), text: said[2]!.trim().replace(NOTE_BEFORE, '') }
+      if (who.match(NOTE_AFTER)?.[0].includes('画外音')) line.vo = true
+      scene.lines.push(line)
+      continue
+    }
+    if (first) {
+      scene.setting = line
+      continue
+    }
+    strange.push(line)
+  }
+  const problems: Problems = []
+  if (!scenes.length) problems.push('没有场头。每场第一行写「场1 内 · 地点名 · 时辰和天气」')
+  const badHeads = scenes.filter(s => !s.location).map(s => s.heading)
+  if (badHeads.length) problems.push(`这些场头不是「场N 内 · 地点名 · 时辰和天气」的格式：${badHeads.slice(0, 3).join(' / ')}`)
+  const bare = scenes.filter(s => s.location && !s.setting).map(s => s.heading)
+  if (bare.length) problems.push(`这些场的场头下面没有写环境那一段：${bare.slice(0, 3).join(' / ')}`)
+  if (strange.length) problems.push(`这些行看不出是动作、台词还是状态变化：${strange.slice(0, 3).join(' / ')}。动作以「△」开头，台词写「人名：台词」，状态变化以「[变化]」开头`)
+  return { scenes, problems }
+}
+
 const Direction = z.object({ title: z.string().min(1), logline: z.string().min(1), strategy: z.string().min(1), opposition: z.string().min(1), cost: z.string().min(1), payoff: z.string().min(1), opening: z.string().min(1) })
-const Line = z.object({ speaker: z.string().min(1), text: z.string().min(1) })
+/** `vo`: an off-screen voice; the speaker's lips do not move. */
+const Line = z.object({ speaker: z.string().min(1), text: z.string().min(1), vo: z.boolean().optional() })
 const Beat = z.object({ id: z.string().min(1), action: z.string(), lines: z.array(Line), seconds: z.number().int().positive(), changes: z.array(z.string()) })
 export const Script = z.object({
-  scenes: z.array(z.object({ id: z.string(), location: z.string().min(1), beats: z.array(Beat).min(1) })).min(1),
+  /** `setting` is the paragraph under the scene's heading in the written screenplay; a hand-written script (M1) has none. */
+  scenes: z.array(z.object({ id: z.string(), location: z.string().min(1), setting: z.string().optional(), beats: z.array(Beat).min(1) })).min(1),
   roster: z.object({
     characters: z.array(z.object({ name: z.string().min(1), gender: z.string(), age_look: z.string(), rank: z.string(), tier: z.string(), needs: z.string(), temperament: z.string(), appearance_lines: z.array(z.string()) })).min(1),
     locations: z.array(z.object({ name: z.string().min(1), beats: z.array(z.string()) })).min(1),
@@ -55,10 +160,14 @@ export const Plan = z.object({
 export type PlanT = z.infer<typeof Plan>
 export const Timeline = z.object({
   seconds: z.number().int(),
-  cuts: z.array(z.object({ index: z.number().int(), start: z.number(), end: z.number(), camera: z.string().min(1), shot: z.string().min(1), present: z.object({ characters: z.array(z.string()), props: z.array(z.string()), view: z.string().min(1) }) })).min(1),
+  cuts: z.array(z.object({ index: z.number().int(), start: z.number(), end: z.number(), camera: z.string().min(1), shot: z.string().min(1), present: z.object({ characters: z.array(z.string()), backs: z.array(z.string()).default([]), props: z.array(z.string()), view: z.string().min(1) }),
+    /** Where this shot is, when the segment crosses locations; otherwise the segment's own. */
+    location: z.preprocess(v => (typeof v === 'string' && !v.trim() ? undefined : v), z.string().optional()) })).min(1),
   timeline: z.array(z.object({ second: z.number().int(), text: z.string().min(1), changes: z.array(z.string()) })),
   lines: z.array(z.object({ speaker: z.string(), text: z.string(), start: z.number(), end: z.number() })),
   ambience: z.string(),
+  /** A fight or chase: the video gets the martial-arts motion LoRA (design 07 二). */
+  fight: z.boolean().default(false),
 })
 export type TimelineT = z.infer<typeof Timeline>
 export const MAIN_VIEW = '主视角'
@@ -79,13 +188,45 @@ export const AssistantAction = z.discriminatedUnion('kind', [
 export type AssistantActionT = z.infer<typeof AssistantAction>
 
 export type ScriptData = { min: number; max: number }
-export type PlanData = { beats: string[]; lines: string[]; min: number; max: number; locations: string[] }
+/** What the program read from the written screenplay; the extraction must keep every line and scene of it. */
+export type ExtractData = ScriptData & { lines: ScreenplayLine[]; locations: string[] }
+/** `voiced`: spoken characters per beat (punctuation left out), dialogue and voice-over alike. */
+export type PlanData = { beats: string[]; voiced: Record<string, number>; min: number; max: number; locations: string[] }
+
+/** H3 spoke about 4.1 Chinese characters a second in our samples (经验审核 05-18); one more second for the start and the end follows Toonflow's margin and is a guess. */
+export const SPEECH_RATE = 4.1
+const SPEECH_MARGIN = 1
+
+export const voicedCount = (text: string) => text.replace(/[\s\p{P}\p{S}]/gu, '').length
+
+export function voicedPerBeat(beats: { id: string; lines: { text: string }[] }[]): Record<string, number> {
+  return Object.fromEntries(beats.map(beat => [beat.id, beat.lines.reduce((sum, line) => sum + voicedCount(line.text), 0)]))
+}
 export type ViewGroupsData = { cuts: string[] }
-export type TimelineData = { seconds: number; lines: { speaker: string; text: string }[] }
+/** The shortest shot, by the creator (2026-10-28): H3 had only been tried at 3 cuts in 15 s, and a cut of about a second looked too choppy to trust. */
+export const MIN_SHOT = 4
+export type TimelineData = { seconds: number; lines: { speaker: string; text: string }[]; characters: string[]; props: string[]; locations: string[] }
 /** The trim is clamped to the allowed range by the editor (design 08); only an impossible answer is sent back. */
 export type TrimData = { seconds: number }
 /** Artifacts on the page and their upstream: the only things the assistant may act on. */
 export type AssistantData = { targets: string[] }
+
+/** Checks every structured script must pass, whether extracted by the model or written by hand (M1). */
+export function scriptProblems(out: ScriptT, data: ScriptData): Problems {
+  const problems: Problems = []
+  const beats = out.scenes.flatMap(scene => scene.beats)
+  const total = beats.reduce((sum, beat) => sum + beat.seconds, 0)
+  if (total < data.min || total > data.max) problems.push(`总时长 ${total} 秒，要在 ${data.min}–${data.max} 秒之间`)
+  const ids = beats.map(beat => beat.id)
+  const dup = ids.filter((id, i) => ids.indexOf(id) !== i)
+  if (dup.length) problems.push(`拍的 id 重复：${[...new Set(dup)].join('、')}`)
+  const names = new Set(out.roster.characters.map(c => c.name))
+  const strangers = [...new Set(beats.flatMap(beat => beat.lines.map(line => line.speaker)).filter(name => !names.has(name)))]
+  if (strangers.length) problems.push(`这些说话人不在人物清单里：${strangers.join('、')}`)
+  const blank = out.roster.characters.filter(c => !c.gender.trim() || !c.age_look.trim()).map(c => c.name)
+  if (blank.length) problems.push(`这些人物没写性别或外观年龄：${blank.join('、')}；剧本没写明的，按身份和称呼推一个，例如「看起来二十出头」`)
+  return problems
+}
 
 const card = <Out, Data>(c: Omit<Card, 'checks'> & { checks?: (out: Out, data: Data) => Problems }): Card => c as Card
 
@@ -94,25 +235,29 @@ export const CARDS: Record<string, Card> = {
     name: 'story-directions', output: 'json', schema: z.object({ directions: z.array(Direction) }),
     checks: out => (out.directions.length === 3 ? [] : [`方向要恰好 3 个，现在是 ${out.directions.length} 个`]),
   }),
-  script: card<ScriptT, ScriptData>({
-    name: 'script', output: 'json', schema: Script, maxTokens: 16000,
+  'story-setup': card<string, unknown>({ name: 'story-setup', output: 'text', checks: out => [...headed(SETUP_KEYS)(out), ...noExampleNames(out)] }),
+  script: card<string, unknown>({ name: 'script', output: 'text', maxTokens: 16000, checks: out => [...screenplay(out).problems, ...noExampleNames(out)] }),
+  'script-review': card<string, unknown>({ name: 'script-review', output: 'text', checks: reviewList }),
+  'script-extract': card<ScriptT, ExtractData>({
+    name: 'script-extract', output: 'json', schema: Script, maxTokens: 16000,
     checks: (out, data) => {
-      const problems: Problems = []
-      const beats = out.scenes.flatMap(scene => scene.beats)
-      const total = beats.reduce((sum, beat) => sum + beat.seconds, 0)
-      if (total < data.min || total > data.max) problems.push(`总时长 ${total} 秒，要在 ${data.min}–${data.max} 秒之间`)
-      const ids = beats.map(beat => beat.id)
-      const dup = ids.filter((id, i) => ids.indexOf(id) !== i)
-      if (dup.length) problems.push(`拍的 id 重复：${[...new Set(dup)].join('、')}`)
-      const names = new Set(out.roster.characters.map(c => c.name))
-      const strangers = [...new Set(beats.flatMap(beat => beat.lines.map(line => line.speaker)).filter(name => !names.has(name)))]
-      if (strangers.length) problems.push(`这些说话人不在人物清单里：${strangers.join('、')}`)
+      // The length is the screenplay's, not the extraction's: the story flow rewrites the screenplay when it is off.
+      const problems = scriptProblems(out, { min: 0, max: Number.POSITIVE_INFINITY })
+      const locations = out.scenes.map(scene => scene.location)
+      if (locations.join('|') !== data.locations.join('|')) problems.push(`场要和正文的场头一一对应、顺序不变，地点照抄场头：正文是 ${data.locations.join('、')}，现在是 ${locations.join('、')}`)
+      const key = (line: ScreenplayLine) => `${line.speaker}${line.vo ? '（画外音）' : ''}：${line.text}`
+      const said = out.scenes.flatMap(scene => scene.beats.flatMap(beat => beat.lines)).map(key)
+      const given = data.lines.map(key)
+      const lost = given.filter(line => !said.includes(line))
+      const extra = said.filter(line => !given.includes(line))
+      if (lost.length) problems.push(`这些台词没有逐字出现，或者画外音没有标 vo：${lost.slice(0, 5).join(' / ')}`)
+      if (extra.length) problems.push(`这些台词不在正文里或改了字：${extra.slice(0, 5).join(' / ')}`)
       return problems
     },
   }),
-  'character-design': card<string, unknown>({ name: 'character-design', output: 'text', checks: lineList(['主色', '区分']) }),
-  'location-design': card<string, unknown>({ name: 'location-design', output: 'text', checks: lineList(['陈设']) }),
-  'prop-design': card<string, unknown>({ name: 'prop-design', output: 'text', checks: lineList([]) }),
+  'character-design': card<string, unknown>({ name: 'character-design', output: 'text', checks: lineList(['性别与年龄', '锚点', '身高', '主色', '区分']) }),
+  'location-design': card<string, unknown>({ name: 'location-design', output: 'text', checks: lineList(['身份', '视觉中心', '陈设', '尺度', '色彩', '锚点']) }),
+  'prop-design': card<string, unknown>({ name: 'prop-design', output: 'text', checks: lineList(['文字', '锚点']) }),
   'portrait-desc': card<string, unknown>({ name: 'portrait-desc', output: 'text', checks: boundary([...STYLE_WORDS, ...FRAME_WORDS, ...LIGHT_WORDS]) }),
   'location-desc': card<string, unknown>({ name: 'location-desc', output: 'text', checks: boundary([...STYLE_WORDS, '构图', '机位', '镜头']) }),
   'prop-desc': card<string, unknown>({ name: 'prop-desc', output: 'text', checks: boundary([...STYLE_WORDS, ...FRAME_WORDS, ...LIGHT_WORDS]) }),
@@ -130,6 +275,11 @@ export const CARDS: Record<string, Card> = {
       if (unknown.length) problems.push(`剧本里没有这些拍：${unknown.join('、')}`)
       const total = out.segments.reduce((sum, segment) => sum + segment.seconds, 0)
       if (total > data.max * 1.2) problems.push(`总时长 ${total} 秒，超出上限两成以上，要把末尾的拍放进 overflow`)
+      for (const segment of out.segments) {
+        const chars = segment.beats.reduce((sum, id) => sum + (data.voiced[id] ?? 0), 0)
+        const need = Math.ceil(chars / SPEECH_RATE + SPEECH_MARGIN)
+        if (chars && segment.seconds < need) problems.push(`${segment.id} 里的台词有 ${chars} 个字，至少要 ${need} 秒才说得完，现在只有 ${segment.seconds} 秒；拉长这一段，或者把拍分到相邻的段`)
+      }
       const strange = [...new Set(out.segments.map(segment => segment.location).filter(location => !data.locations.includes(location)))]
       if (strange.length) problems.push(`这些地点不在出场清单里：${strange.join('、')}；location 只能写清单里的地点名：${data.locations.join('、')}`)
       return problems
@@ -165,7 +315,12 @@ export const CARDS: Record<string, Card> = {
       const expected = Array.from({ length: data.seconds }, (_, i) => i)
       if (seconds.join(',') !== expected.join(',')) problems.push(`timeline 要从第 0 秒到第 ${data.seconds - 1} 秒每秒一项`)
       const cuts = [...out.cuts].sort((a, b) => a.start - b.start)
-      if (cuts[0]?.start !== 0 || cuts.at(-1)?.end !== data.seconds || cuts.some((cut, i) => i > 0 && cut.start !== cuts[i - 1]!.end)) problems.push('cuts 要从第 0 秒开始、首尾相接覆盖整段')
+      const seams = [
+        ...(cuts[0]?.start !== 0 ? [`第一个镜头的 start 是 ${cuts[0]?.start}，要是 0`] : []),
+        ...cuts.slice(1).flatMap((cut, i) => (cut.start !== cuts[i]!.end ? [`第 ${cuts[i]!.index} 个镜头的 end 是 ${cuts[i]!.end}、第 ${cut.index} 个的 start 是 ${cut.start}，两个要相等`] : [])),
+        ...(cuts.at(-1)?.end !== data.seconds ? [`最后一个镜头的 end 是 ${cuts.at(-1)?.end}，要等于这一段的 ${data.seconds} 秒`] : []),
+      ]
+      if (seams.length) problems.push(`cuts 要首尾相接覆盖整段，start、end 是开始和结束的那一刻：${seams.join('；')}`)
       const said = out.lines.map(line => `${line.speaker}：${line.text}`)
       const given = data.lines.map(line => `${line.speaker}：${line.text}`)
       const lost = given.filter(line => !said.includes(line))
@@ -173,6 +328,14 @@ export const CARDS: Record<string, Card> = {
       if (lost.length) problems.push(`这些台词没有逐字出现：${lost.join(' / ')}`)
       if (extra.length) problems.push(`这些台词不在剧本里或改了字：${extra.join(' / ')}`)
       if (out.lines.some(line => line.start < 0 || line.end > data.seconds || line.end < line.start)) problems.push('台词的起止秒数超出这一段')
+      const strange = [...new Set(out.cuts.flatMap(cut => [...cut.present.characters.filter(n => !data.characters.includes(n)), ...cut.present.props.filter(n => !data.props.includes(n))]))]
+      const short = out.cuts.filter(cut => cut.end - cut.start < MIN_SHOT).map(cut => `第 ${cut.index} 个镜头 ${cut.start}–${cut.end} 秒`)
+      if (short.length) problems.push(`每个镜头至少 ${MIN_SHOT} 秒，这些太短：${short.join('、')}；合并相邻镜头，景别变化用推近、拉远在同一个镜头里完成`)
+      const unlisted = out.cuts.flatMap(cut => cut.present.backs.filter(n => !cut.present.characters.includes(n)).map(n => `第 ${cut.index} 个镜头的 ${n}`))
+      const placed = out.cuts.filter(cut => cut.location !== undefined ? !data.locations.includes(cut.location) : data.locations.length > 1)
+      if (placed.length) problems.push(`这一段经过 ${data.locations.join('、')}，每个镜头的 location 要照抄其中一个：${placed.map(cut => `第 ${cut.index} 个镜头${cut.location ? `写了「${cut.location}」` : '没写'}`).join('、')}`)
+      if (unlisted.length) problems.push(`backs 里的人也要写在同一个镜头的 characters 里：${unlisted.join('、')}`)
+      if (strange.length) problems.push(`present 里这些名字不在出场清单里：${strange.join('、')}；人物只能写 ${data.characters.join('、')}，道具只能写 ${data.props.join('、') || '（无）'}，照抄名字，位置写进 shot`)
       return problems
     },
   }),

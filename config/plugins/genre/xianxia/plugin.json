@@ -5,6 +5,10 @@
   "fragments": {
     "character": "character.md",
     "prop": "prop.md",
-    "describe": "describe.md"
+    "describe": "describe.md",
+    "story": "story.md",
+    "dialogue": "dialogue.md",
+    "location": "location.md",
+    "sample": "sample.md"
   }
 }

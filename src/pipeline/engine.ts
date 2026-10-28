@@ -1,38 +1,54 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RunResult, Section } from '../runner.js'
-import { ReviewClosed, type NodeRun, type Store } from '../store/store.js'
+import { ReviewClosed, type Artifact, type NodeRun, type Store } from '../store/store.js'
 import type { Card } from '../tasks.js'
+import type { H3Profile } from '../jobs/videos.js'
+import type { VideoClient } from '../video/comfy.js'
 import type { ImageClient } from '../yir.js'
 
 export type Ready = { ok: true; inputs: number[] } | { ok: false }
 export type TextRunner = (o: { card: Card; sections: Section[]; data?: unknown; tag: string; nodeRunId: number }) => Promise<RunResult>
 
-export type Env = { store: Store; root: string; text: TextRunner; images: ImageClient | null; sleep?: (ms: number) => Promise<void> }
+export type VisionRunner = (o: { card: Card; sections: Section[]; images: string[]; data?: unknown; tag: string; nodeRunId: number }) => Promise<RunResult>
+/** The GPU side; `online` is refreshed by the runner from /system_stats, so a tick never waits on the network. */
+export type Gpu = { client: VideoClient; profile: H3Profile; online: boolean }
+/** Speech with times; whisper.cpp in production, a fake in tests. */
+export type Listener = (source: string, dir: string) => { text: string; start: number; end: number }[] | Promise<{ text: string; start: number; end: number }[]>
+export type Env = { store: Store; root: string; text: TextRunner; vision?: VisionRunner; images: ImageClient | null; gpu?: Gpu | null; listen?: Listener; sleep?: (ms: number) => Promise<void> }
+export type Pool = 'text' | 'vision' | 'image' | 'video' | 'edit'
 
 export interface NodeDef {
   name: string
-  pool: 'text' | 'image'
+  pool: Pool
   /** Kind of artifact it produces, at the instance's scope. */
   output: string
   /** Review point its drafts go to; without one, outputs are locked at once. */
   review?: number
-  /** Paid pictures one run draws; such a run needs that many units of permission. */
-  images?: number
+  /**
+   * For a paid node: the text artifact a creator's note on its output is applied to (a picture's
+   * description, a draft's timeline); the output is redrawn from the rewritten text. Undefined
+   * means a note cannot change it, only a redo can.
+   */
+  reviseVia?: (store: Store, artifact: Artifact) => Artifact | undefined
+  /** Paid generations one run makes (pictures or video segments); such a run needs that many units of permission. */
+  paid?: { pool: 'image' | 'video'; count: number }
   scopes(store: Store): string[]
   ready(store: Store, scope: string): Ready
   /** Writes draft artifacts (with their inputs) and returns their ids. */
   run(env: Env, scope: string, run: NodeRun, inputs: number[]): Promise<number[]>
 }
 
-/** Pool limits from design 02; guesses to be tuned after M1. */
-const POOL_LIMIT = { text: 4, image: 4 }
+/** Pool limits from design 02; guesses to be tuned after M1, except video: one GPU runs one workflow at a time. */
+const POOL_LIMIT: Record<Pool, number> = { text: 4, vision: 2, image: 4, video: 1, edit: 1 }
 const KIND_NAMES: Record<string, string> = {
   script: '剧本', roster: '出场清单', entity_brief: '外观设计', entity_desc: '描述', entity_lock: '锁定图', style_ref: '风格参考图',
   segment_plan: '分段', timeline: '时间轴', view_plan: '机位归并', keyframe_desc: '关键帧描述', keyframe: '关键帧', entity_image: '设定图',
+  audition: '试音', voice: '音色', clip_draft: '草稿', trim: '裁剪', cut_draft: '草稿成片', clip_final: '精修片', cut_final: '交付片',
 }
 
-export type Pending = { node: string; scope: string; images: number }
+/** Waiting for the creator to grant `count` units of `pool`, or (`gpu`) for the GPU to come online. */
+export type Pending = { node: string; scope: string; pool: 'image' | 'video'; count: number; gpu?: boolean }
 export type Event = { type: 'started' | 'review' | 'done' | 'failed' | 'stale'; node: string; scope: string; detail?: string }
 
 /**
@@ -41,7 +57,7 @@ export type Event = { type: 'started' | 'review' | 'done' | 'failed' | 'stale'; 
  * that a revise/redo queued), within pool limits; paid nodes also need permission.
  */
 export class Engine {
-  private inflight = { text: 0, image: 0 }
+  private inflight: Record<Pool, number> = { text: 0, vision: 0, image: 0, video: 0, edit: 0 }
   private running = new Set<Promise<void>>()
 
   constructor(readonly env: Env, readonly nodes: NodeDef[], private say: (e: Event) => void = () => {}) {}
@@ -53,31 +69,64 @@ export class Engine {
 
   /** One scheduling pass. Returns what is waiting for the creator to press start; `dry` only looks. */
   tick(dry = false): Pending[] {
-    const { store } = this.env
     const pending: Pending[] = []
+    const broken = new Map<string, string>()
     for (const def of this.nodes) {
-      for (const scope of def.scopes(store)) {
-        const last = store.latestNodeRun(def.name, scope)
-        if (last?.status === 'running' || last?.status === 'failed') continue
-        const live = store.artifacts(def.output, scope, ['draft', 'locked'])
-        const queued = last?.status === 'queued' ? last : undefined
-        if (!queued && live.length) continue
-        const ready = def.ready(store, scope)
-        if (!ready.ok || !this.settled(ready.inputs)) continue
-        if (dry) {
-          if (def.images && !queued?.started_at && store.permitsLeft(scope, 'image') < def.images) pending.push({ node: def.name, scope, images: def.images })
-          continue
+      // A node that cannot even tell whether it is ready (bad stored data, say) is reported and skipped; the rest keep going.
+      try {
+        for (const scope of def.scopes(this.env.store)) {
+          try {
+            this.visit(def, scope, dry, pending)
+          } catch (error) {
+            broken.set(`${def.name} ${scope}`, error instanceof Error ? error.message : String(error))
+          }
         }
-        if (last?.status === 'waiting_review') store.setNodeRun(last.id, 'done')
-        if (this.inflight[def.pool] >= POOL_LIMIT[def.pool]) continue
-        if (def.images && !queued?.started_at && !store.usePermits(scope, 'image', def.images)) {
-          pending.push({ node: def.name, scope, images: def.images })
-          continue
-        }
-        this.start(def, scope, queued ?? store.addNodeRun(def.name, scope, this.patch(def, scope, ready.inputs)), ready.inputs)
+      } catch (error) {
+        broken.set(`${def.name} *`, error instanceof Error ? error.message : String(error))
       }
     }
+    if (dry) return pending
+    for (const [key, message] of broken) {
+      if (this.broken.get(key) === message) continue
+      const space = key.indexOf(' ')
+      this.say({ type: 'failed', node: key.slice(0, space), scope: key.slice(space + 1), detail: `调度时出错：${message}` })
+    }
+    this.broken = broken
     return pending
+  }
+
+  /** Instances whose scheduling threw on the last pass, with the message: shown on the progress page instead of stopping the process. */
+  broken = new Map<string, string>()
+
+  private visit(def: NodeDef, scope: string, dry: boolean, pending: Pending[]) {
+    const { store } = this.env
+    const last = store.latestNodeRun(def.name, scope)
+    if (last?.status === 'running' || last?.status === 'failed') return
+    const live = store.artifacts(def.output, scope, ['draft', 'locked'])
+    const queued = last?.status === 'queued' ? last : undefined
+    if (!queued && live.length) return
+    const ready = def.ready(store, scope)
+    if (!ready.ok || !this.settled(ready.inputs)) return
+    const paid = def.paid && !queued?.started_at ? def.paid : undefined
+    const offline = def.pool === 'video' && !this.env.gpu?.online
+    if (dry) {
+      if (paid && store.permitsLeft(scope, paid.pool) < paid.count) pending.push({ node: def.name, scope, pool: paid.pool, count: paid.count })
+      else if (offline) pending.push({ node: def.name, scope, pool: 'video', count: 0, gpu: true })
+      return
+    }
+    if (last?.status === 'waiting_review') store.setNodeRun(last.id, 'done')
+    if (paid && store.permitsLeft(scope, paid.pool) < paid.count) {
+      pending.push({ node: def.name, scope, pool: paid.pool, count: paid.count })
+      return
+    }
+    // Design 07 五: a granted video job waits while the GPU is off and starts once it is on.
+    if (offline) {
+      pending.push({ node: def.name, scope, pool: 'video', count: 0, gpu: true })
+      return
+    }
+    if (this.inflight[def.pool] >= POOL_LIMIT[def.pool]) return
+    if (paid && !store.usePermits(scope, paid.pool, paid.count)) return
+    this.start(def, scope, queued ?? store.addNodeRun(def.name, scope, this.patch(def, scope, ready.inputs)), ready.inputs)
   }
 
   /**
@@ -208,11 +257,22 @@ export class Engine {
    * The creator's instruction against one artifact: its node runs again with the previous
    * version and the instruction. From a review, that review is closed and its drafts dropped.
    */
+  /** Whether a note on this artifact can change it (for a paid output, whether it has a text to rewrite). */
+  revisable(artifactId: number): boolean {
+    const a = this.env.store.artifact(artifactId)
+    const def = this.nodes.find(d => d.output === a.kind && d.scopes(this.env.store).includes(a.scope))
+    return Boolean(def && (!def.paid || def.reviseVia?.(this.env.store, a)))
+  }
+
   revise(artifactId: number, instruction: string, reviewId?: number) {
     const { store } = this.env
     const a = store.artifact(artifactId)
     const def = this.nodeFor(a.kind, a.scope)
-    const queue = () => store.addNodeRun(def.name, a.scope, { instruction, previous_id: artifactId })
+    // A paid node does not read notes; the note goes to the text it was made from, and the output follows.
+    const target = def.paid ? def.reviseVia?.(store, a) : a
+    if (!target) throw new Error(`${def.name} 这一步没有可改的文字，写意见改不了，只能「重出」`)
+    const targetDef = target === a ? def : this.nodeFor(target.kind, target.scope)
+    const queue = () => store.addNodeRun(targetDef.name, target.scope, { instruction, previous_id: target.id })
     if (reviewId === undefined) return void store.tx(queue)
     const review = store.review(reviewId)
     store.decide(reviewId, { action: 'revise', artifact_id: artifactId, instruction }, () => {
@@ -257,6 +317,31 @@ export class Engine {
     const run = this.env.store.nodeRun(nodeRunId)
     if (run.status !== 'failed') throw new Error(`节点运行 ${nodeRunId} 是 ${run.status}，不是失败`)
     this.env.store.setNodeRun(nodeRunId, 'queued')
+  }
+
+  /** Writes a node's output again from its current inputs (after a prompt changed, say); its downstream goes stale once the new version locks. */
+  rerun(node: string, scope: string) {
+    const def = this.nodes.find(d => d.name === node)
+    if (!def) throw new Error(`没有节点 ${node}`)
+    if (!def.scopes(this.env.store).includes(scope)) throw new Error(`${node} 没有作用域 ${scope}`)
+    if (def.paid) throw new Error(`${node} 花钱，用审核里的「重出」`)
+    const last = this.env.store.latestNodeRun(node, scope)
+    if (last?.status === 'queued' || last?.status === 'running') throw new Error(`${node} ${scope} 已经在排队或在跑`)
+    this.env.store.addNodeRun(node, scope)
+  }
+
+  /**
+   * Design 07 六: a video job that may or may not have reached ComfyUI is submitted again only
+   * when the creator says so; its node run goes back to the queue on the permission it already used.
+   */
+  resubmit(jobId: number) {
+    const { store } = this.env
+    const job = store.job(jobId)
+    if (job.status !== 'unknown') throw new Error(`任务 ${jobId} 是 ${job.status}，不是「可能没提交成功」`)
+    store.tx(() => {
+      store.updateJob(jobId, { status: 'queued', provider_job_id: null, error: null })
+      if (job.node_run_id && store.nodeRun(job.node_run_id).status === 'failed') store.setNodeRun(job.node_run_id, 'queued')
+    })
   }
 }
 

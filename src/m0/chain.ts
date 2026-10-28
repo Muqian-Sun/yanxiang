@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { loadModels } from '../llm.js'
 import { loadPlugins } from '../plugins.js'
 import { runTask, TaskFailed, type RunResult, type Section } from '../runner.js'
-import { CARDS, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
+import { CARDS, screenplay, setupSection, voicedPerBeat, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const idea = process.argv[2]
@@ -68,16 +68,39 @@ if (!directions) process.exit(1)
 const chosen = directions.directions[0]!
 const fmtDirection = (d: Record<string, string>) => `标题：${d.title}\n梗概：${d.logline}\n主角的策略：${d.strategy}\n对抗：${d.opposition}\n代价：${d.cost}\n本集兑现：${d.payoff}\n开场画面：${d.opening}`
 
-// 2. 剧本与出场清单
-const script = await call<ScriptT>('script', 'script', [
+// 2. 本集设定 → 剧本正文 → 拆成拍和出场清单；正文里每场的环境段由程序挂回拆出来的场上
+const setup = await call<string>('story-setup', 'setup', [
   { title: '选定的方向', body: fmtDirection(chosen) },
   { title: '单集时长', body: `${MIN}–${MAX} 秒` },
-], { min: MIN, max: MAX })
+])
+if (!setup) process.exit(1)
+const scriptSections = [
+  { title: '选定的方向', body: fmtDirection(chosen) },
+  { title: '本集设定', body: setup },
+  { title: '单集时长', body: `${MIN}–${MAX} 秒` },
+]
+const draft = await call<string>('script', 'script', scriptSections)
+if (!draft) process.exit(1)
+const review = await call<string>('script-review', 'script-review', [{ title: '本集设定', body: setup }, { title: '剧本正文', body: draft }])
+if (review === null) process.exit(1)
+const screenplayText = review.trim() === '无' ? draft : await call<string>('script', 'script-revised', [
+  ...scriptSections,
+  { title: '上一版', body: draft },
+  { title: '审读意见', body: `${review}\n\n照这些意见改上一版：被指出的地方按改法改，其余保留。` },
+])
+if (!screenplayText) process.exit(1)
+const written = screenplay(screenplayText)
+const script = await call<ScriptT>('script-extract', 'script-extract', [
+  { title: '剧本正文', body: screenplayText },
+  { title: '本集设定里的人物', body: setupSection(setup, '人物') },
+  { title: '单集时长', body: `${MIN}–${MAX} 秒` },
+], { min: MIN, max: MAX, lines: written.scenes.flatMap(s => s.lines), locations: written.scenes.map(s => s.location) })
 if (!script) process.exit(1)
+script.scenes.forEach((scene, i) => (scene.setting = written.scenes[i]!.setting))
 const beats = script.scenes.flatMap(scene => scene.beats.map(beat => ({ ...beat, location: scene.location })))
 const beatById = new Map(beats.map(beat => [beat.id, beat]))
 const fmtBeat = (beat: (typeof beats)[number]) =>
-  [`${beat.id}（${beat.location}，约 ${beat.seconds} 秒）${beat.action}`, ...beat.lines.map(l => `  ${l.speaker}：${l.text}`), ...(beat.changes.length ? [`  状态变化：${beat.changes.join('；')}`] : [])].join('\n')
+  [`${beat.id}（${beat.location}，约 ${beat.seconds} 秒）${beat.action}`, ...beat.lines.map(l => `  ${l.speaker}${l.vo ? '（画外音）' : ''}：${l.text}`), ...(beat.changes.length ? [`  状态变化：${beat.changes.join('；')}`] : [])].join('\n')
 const stateBefore = (id: string) => {
   const index = beats.findIndex(beat => beat.id === id)
   return beats.slice(0, Math.max(index, 0)).flatMap(beat => beat.changes)
@@ -86,7 +109,7 @@ const stateBefore = (id: string) => {
 // 3. 外观设计：人物按顺序（后面的人要和前面的人区分开），地点按顺序（相连的地点照前面的写），道具并行
 const designs = new Map<string, string>()
 for (const [i, person] of script.roster.characters.entries()) {
-  const others = [...designs.entries()].filter(([key]) => key.startsWith('char:')).map(([key, text]) => `${key.slice(5)}：${pick(text, '主色').replace('主色：', '主色 ')}；${pick(text, '区分').replace('区分：', '')}`)
+  const others = [...designs.entries()].filter(([key]) => key.startsWith('char:')).map(([key, text]) => `${key.slice(5)}：${[pick(text, '主色').replace('主色：', '主色 '), pick(text, '区分').replace('区分：', ''), pick(text, '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`)
   const text = await call<string>('character-design', `character-design-${i + 1}`, [
     { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
     { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
@@ -101,6 +124,8 @@ const designLocations = async () => {
     const earlier = [...designs.entries()].filter(([key]) => key.startsWith('loc:')).map(([key, text]) => `${key.slice(4)}\n${text}`)
     const text = await call<string>('location-design', `location-design-${i + 1}`, [
       { title: '地点', body: place.name },
+      { title: '本集设定里的世界和地点', body: [setupSection(setup, '世界一角'), setupSection(setup, '地点')].join('\n\n') },
+      { title: '剧本里这个地点的环境', body: script.scenes.filter(scene => scene.location === place.name).map(scene => scene.setting ?? '').join('\n') },
       { title: '在这里发生的剧情', body: place.beats.map(id => beatById.get(id)).filter(Boolean).map(b => fmtBeat(b!)).join('\n') },
       { title: '场内的关键道具', body: propsAt(place.name).map(prop => `${prop.name}：${prop.holder}`).join('\n') },
       { title: '已设计的地点', body: earlier.join('\n\n') },
@@ -134,7 +159,7 @@ const plan = await call<PlanT>('segment-plan', 'segment-plan', [
   { title: '剧本', body: beats.map(fmtBeat).join('\n') },
   { title: '已定的人物、地点、道具', body: names.join('、') },
   { title: '单集时长', body: `${MIN}–${MAX} 秒` },
-], { beats: beats.map(b => b.id), lines: [], min: MIN, max: MAX })
+], { beats: beats.map(b => b.id), voiced: voicedPerBeat(beats), min: MIN, max: MAX, locations: script.roster.locations.map(l => l.name) })
 if (!plan) process.exit(1)
 
 // 6. 段时间轴：承接段要看上一段的最后一个镜头，所以一串承接段按顺序写，不同串之间并行
@@ -207,7 +232,7 @@ await pool(4, keyframeJobs)
 // 8. 同一输入再跑两次：每类任务取几个样本
 const sample = (task: string, n: number) => calls.filter(c => c.task === task && c.result).slice(0, n)
 const repeatSet = [
-  ...sample('story-directions', 1), ...sample('script', 1), ...sample('character-design', 2), ...sample('location-design', 1), ...sample('prop-design', 1),
+  ...sample('story-directions', 1), ...sample('story-setup', 1), ...sample('script', 1), ...sample('script-review', 1), ...sample('script-extract', 1), ...sample('character-design', 2), ...sample('location-design', 1), ...sample('prop-design', 1),
   ...sample('portrait-desc', 2), ...sample('location-desc', 1), ...sample('prop-desc', 1), ...sample('segment-plan', 1), ...sample('timeline', 2),
   ...sample('keyframe-desc', 3), ...sample('location-view-desc', 1),
 ]

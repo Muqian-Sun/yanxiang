@@ -30,6 +30,7 @@ export type NewArtifact = {
   node_run_id?: number | null
   created_by: Artifact['created_by']
 }
+export type Project = { id: number; name: string; entry: 'idea' | 'novel' | 'script'; style: string; genre: string; seconds_min: number; seconds_max: number; delivery: '720p' | '1080p'; created_at: string }
 export type Review = { id: number; point: number; scope: string; artifact_ids: number[]; status: 'open' | 'closed'; opened_at: string; closed_at: string | null }
 export type NodeRunStatus = 'queued' | 'running' | 'waiting_review' | 'done' | 'failed'
 export type NodeRun = { id: number; node: string; scope: string; status: NodeRunStatus; attempt: number; error: string | null; started_at: string | null; ended_at: string | null; instruction: string | null; previous_id: number | null }
@@ -55,6 +56,8 @@ export type Job = {
 export class ReviewClosed extends Error {}
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'audio/wav': 'wav' }
+/** How long a write waits for another process's transaction; a guess, well above one tick. */
+const BUSY_MS = 5000
 const now = () => new Date().toISOString()
 const digest = (ids: number[]) => createHash('sha256').update([...ids].sort((a, b) => a - b).join(',')).digest('hex')
 
@@ -69,7 +72,8 @@ export class Store {
   constructor(readonly dir: string) {
     mkdirSync(join(dir, 'media'), { recursive: true })
     this.db = new DatabaseSync(join(dir, 'project.db'))
-    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
+    // The runner and the command line write the same file; without a wait the second writer fails at once (M1, 2026-10-27).
+    this.db.exec(`PRAGMA busy_timeout = ${BUSY_MS}; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`)
     const version = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
     for (let v = version; v < MIGRATIONS.length; v++) this.tx(() => {
       this.db.exec(MIGRATIONS[v]!)
@@ -103,8 +107,8 @@ export class Store {
     })
   }
 
-  project(): Row & { id: number } {
-    const row = this.db.prepare('SELECT * FROM project ORDER BY id LIMIT 1').get() as (Row & { id: number }) | undefined
+  project(): Project {
+    const row = this.db.prepare('SELECT * FROM project ORDER BY id LIMIT 1').get() as Project | undefined
     if (!row) throw new Error(`${this.dir} 里还没有项目`)
     return row
   }

@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>言象 · 审核台</title>
+<style>
+:root {
+  --paper: #f5f2eb; --panel: #fffdf9; --panel-2: #faf7f1; --ink: #1d1b18; --ink-2: #4a463f; --muted: #8b857a;
+  --line: #e7e1d6; --line-2: #efeae1;
+  --side: #1b1a17; --side-2: #26241f; --side-ink: #e9e4d8; --side-muted: #8f897c;
+  --cinnabar: #b4432b; --cinnabar-soft: #f7e6e0; --jade: #2f6f5e; --jade-soft: #e3efe9; --gold: #a8803e; --gold-soft: #f6eedd;
+  --indigo: #4c5a8a; --indigo-soft: #e8ebf5; --bad: #b23a32; --bad-soft: #fbe5e2;
+  --r: 12px; --r-sm: 8px; --shadow: 0 1px 2px rgba(29,27,24,.04), 0 6px 20px rgba(29,27,24,.06);
+  --serif: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box }
+html, body { margin: 0; height: 100% }
+body { font: 14px/1.65 var(--sans); background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased }
+button, select, textarea, input { font: inherit; color: inherit }
+a { color: var(--cinnabar) }
+svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round }
+
+/* ---------- side ---------- */
+.app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh }
+.side { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; padding: 18px 14px 14px }
+.brand { display: flex; align-items: baseline; gap: 10px; padding: 0 8px 16px }
+.brand b { font: 600 24px/1 var(--serif); letter-spacing: 6px }
+.brand span { color: var(--side-muted); font-size: 12px; letter-spacing: 1px }
+.proj { background: var(--side-2); border-radius: var(--r-sm); padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px }
+.proj select { width: 100%; background: #312e28; border: 1px solid #3c3831; border-radius: 6px; padding: 6px 8px; color: var(--side-ink); outline: none }
+.row2 { display: flex; gap: 8px; align-items: center }
+.run { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; border-radius: 6px; border: 1px solid #3c3831; background: #312e28; cursor: pointer; font-size: 12px; color: var(--side-ink) }
+.run.on { background: var(--jade); border-color: var(--jade); color: #fff }
+.run:hover { filter: brightness(1.08) }
+.gpu { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--side-muted); white-space: nowrap }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #6b665c }
+.dot.on { background: #4cc38a; box-shadow: 0 0 0 3px rgba(76,195,138,.18) }
+.dot.off { background: #e5534b }
+.spent { font-size: 12px; color: var(--side-muted); padding: 0 2px }
+.nav h4 { margin: 14px 10px 6px; font-size: 11px; color: var(--side-muted); font-weight: 500; letter-spacing: 2px }
+.nav .item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; cursor: pointer; color: #cfc9bc; user-select: none }
+.nav .item:hover { background: var(--side-2); color: #fff }
+.nav .item.sel { background: #f5f2eb; color: var(--ink) }
+.nav .item .n { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--cinnabar); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center }
+.nav .item.sel .n { background: var(--cinnabar) }
+.nav .item .n.muted { background: #3a3730; color: #cfc9bc }
+.nav .none { padding: 4px 10px; font-size: 12px; color: var(--side-muted) }
+
+/* ---------- top ---------- */
+.mainwrap { min-width: 0; display: flex; flex-direction: column }
+.top { position: sticky; top: 0; z-index: 4; background: rgba(245,242,235,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding: 16px 32px 12px }
+.top h1 { margin: 0; font: 600 22px/1.3 var(--serif); letter-spacing: 1px }
+.top .sub { color: var(--muted); font-size: 13px; margin-top: 2px }
+.phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 12px }
+.phase { min-width: 0 }
+.phase .lbl { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); margin-bottom: 5px }
+.phase .lbl em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums }
+.segbar { display: flex; gap: 2px; height: 6px }
+.segbar i { flex: 1; border-radius: 3px; background: var(--line); overflow: hidden; display: flex }
+.segbar i b { height: 100% }
+.segbar b.g { background: var(--jade) } .segbar b.y { background: var(--gold) } .segbar b.n { background: var(--indigo) } .segbar b.r { background: var(--bad) }
+main { padding: 24px 32px 140px; max-width: 1480px; width: 100% }
+
+/* ---------- common ---------- */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow) }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; transition: .15s; white-space: nowrap }
+.btn:hover { border-color: #cfc6b5; background: #fff }
+.btn:disabled { opacity: .5; cursor: default }
+.btn.primary { background: var(--jade); border-color: var(--jade); color: #fff }
+.btn.primary:hover { filter: brightness(1.07) }
+.btn.accent { background: var(--cinnabar); border-color: var(--cinnabar); color: #fff }
+.btn.accent:hover { filter: brightness(1.07) }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2) }
+.btn.ghost:hover { background: var(--panel-2); border-color: var(--line) }
+.btn.sm { padding: 4px 10px; font-size: 12px; border-radius: 6px }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11px; background: var(--panel-2); color: var(--ink-2); border: 1px solid var(--line-2); white-space: nowrap }
+.badge.gold { background: var(--gold-soft); color: #7a5b22; border-color: #ecdfc3 }
+.badge.jade { background: var(--jade-soft); color: var(--jade); border-color: #cfe3d9 }
+.badge.red { background: var(--cinnabar-soft); color: var(--cinnabar); border-color: #f0d2c9 }
+.badge.blue { background: var(--indigo-soft); color: var(--indigo); border-color: #d6dbee }
+.muted { color: var(--muted) }
+.small { font-size: 12px }
+.notice { display: flex; gap: 8px; align-items: flex-start; padding: 9px 12px; border-radius: 8px; font-size: 13px; background: var(--gold-soft); color: #6f531d; border: 1px solid #ecdfc3 }
+.notice.bad { background: var(--bad-soft); color: var(--bad); border-color: #f2cfca }
+.notice.ok { background: var(--jade-soft); color: var(--jade); border-color: #cfe3d9 }
+.empty { padding: 72px 20px; text-align: center; color: var(--muted) }
+.empty svg.i { width: 34px; height: 34px; margin-bottom: 10px; stroke-width: 1.2; color: #c3bba9 }
+.empty b { display: block; color: var(--ink-2); font-weight: 500; font-size: 15px; margin-bottom: 4px }
+h3.sec { font: 600 16px/1.4 var(--serif); margin: 28px 0 12px; display: flex; align-items: center; gap: 8px }
+h3.sec:first-child { margin-top: 0 }
+pre { white-space: pre-wrap; margin: 0; font: 13px/1.75 var(--sans); color: var(--ink-2) }
+textarea { width: 100%; min-height: 76px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; background: #fff; resize: vertical; outline: none; transition: .15s }
+textarea:focus { border-color: #c9b98f; box-shadow: 0 0 0 3px rgba(168,128,62,.12) }
+.drawer { border-top: 1px solid var(--line-2) }
+.drawer > summary { list-style: none; cursor: pointer; padding: 9px 2px; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; user-select: none }
+.drawer > summary::-webkit-details-marker { display: none }
+.drawer > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: .15s; margin: 0 4px 0 2px }
+.drawer[open] > summary::before { transform: rotate(45deg) }
+.drawer > .body { padding: 0 2px 12px 16px }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; display: inline-block; vertical-align: -2px }
+@keyframes spin { to { transform: rotate(360deg) } }
+.skeleton { height: 120px; border-radius: var(--r); background: linear-gradient(90deg, #efeae0 25%, #f6f2ea 37%, #efeae0 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite }
+@keyframes sk { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+
+/* ---------- reviews ---------- */
+.review { margin-bottom: 22px; overflow: hidden }
+.review > header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line-2) }
+.review > header h3 { margin: 0; font: 600 17px/1.3 var(--serif) }
+.review > header .sp { flex: 1 }
+.cands { display: grid; gap: 16px; padding: 18px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) }
+.cands.single { grid-template-columns: minmax(0, 560px) }
+.cands.wide { grid-template-columns: 1fr }
+.cand { display: flex; flex-direction: column; gap: 10px; min-width: 0 }
+.media { position: relative; border-radius: 10px; overflow: hidden; background: #ebe6dc; display: flex; align-items: center; justify-content: center }
+.media img { display: block; width: 100%; max-height: 64vh; object-fit: contain; cursor: zoom-in; transition: transform .25s }
+.media:hover img { transform: scale(1.01) }
+.media .tag { position: absolute; left: 10px; top: 10px; background: rgba(27,26,23,.72); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px }
+.cand .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.cand .bar .sp { flex: 1 }
+.textbody { white-space: pre-wrap; line-height: 1.85; font-size: 14px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 14px 16px; max-height: 60vh; overflow: auto }
+.clip { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 16px; align-items: start }
+.clip video { width: 100%; border-radius: 10px; background: #000; position: sticky; top: 140px }
+@media (max-width: 1200px) { .clip { grid-template-columns: 1fr } .clip video { position: static } }
+.tl { border: 1px solid var(--line); border-radius: 10px; max-height: 64vh; overflow: auto; background: #fff }
+.tl .cut { padding: 9px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line-2); position: sticky; top: 0; z-index: 1 }
+.tl .cut b { font-weight: 600; margin-right: 6px }
+.tl .cut .shot { color: var(--ink-2); font-size: 12px; margin-top: 2px }
+.tl .sec { display: grid; grid-template-columns: 46px 1fr; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--line-2); cursor: pointer; font-size: 13px; transition: background .15s }
+.tl .sec:hover { background: #fbf8f1 }
+.tl .sec.now { background: var(--gold-soft) }
+.tl .sec .t { color: var(--cinnabar); font-variant-numeric: tabular-nums }
+.tl .line { display: block; color: var(--jade); margin-top: 2px }
+.actions { display: flex; gap: 10px; align-items: center; padding: 12px 18px; border-top: 1px solid var(--line-2); background: var(--panel-2) }
+.actions .sp { flex: 1 }
+.revise { display: none; flex-direction: column; gap: 8px }
+.revise.open { display: flex }
+.revise .hint { font-size: 12px; color: var(--muted) }
+.rvbar { display: flex; gap: 8px; align-items: center }
+.review .note { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 8px }
+.review .note textarea { min-height: 64px }
+.rvbar .sp { flex: 1 }
+table.checks { width: 100%; border-collapse: collapse; font-size: 13px }
+table.checks td { padding: 7px 10px; border-bottom: 1px solid var(--line-2) }
+table.checks td:first-child { color: var(--ink-2); width: 110px }
+
+/* ---------- library ---------- */
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) }
+.grid.wide { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)) }
+.ent { overflow: hidden; display: flex; flex-direction: column }
+.ent .cover { background: #ebe6dc; display: flex; align-items: center; justify-content: center; aspect-ratio: 3 / 4; overflow: hidden }
+.grid.wide .ent .cover { aspect-ratio: 16 / 9 }
+.ent .cover img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in }
+.ent .cover .none { color: var(--muted); font-size: 12px }
+.ent .body { padding: 12px 14px 6px; display: flex; flex-direction: column; gap: 8px }
+.ent .name { display: flex; align-items: center; gap: 8px }
+.ent .name b { font: 600 16px/1.3 var(--serif) }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap }
+.thumb { width: 72px; font-size: 11px; color: var(--muted); text-align: center }
+.thumb img, .thumb .ph { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; background: #ebe6dc; display: block; cursor: zoom-in; border: 1px solid var(--line-2) }
+.thumb .ph { display: flex; align-items: center; justify-content: center; cursor: default }
+.seg { margin-bottom: 18px; overflow: hidden }
+.seg > header { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line-2); flex-wrap: wrap }
+.seg > header h3 { margin: 0; font: 600 16px/1.3 var(--serif) }
+.seg > header .sum { color: var(--ink-2); font-size: 13px; flex-basis: 100% }
+.seg > .body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 16px; padding: 16px 18px }
+@media (max-width: 1200px) { .seg > .body { grid-template-columns: 1fr } }
+.kfs { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; align-content: start }
+.kf { font-size: 12px; color: var(--ink-2) }
+.kf .img { aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #ebe6dc; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; margin-bottom: 4px; text-align: center; padding: 2px }
+.kf .img img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in }
+video, audio { max-width: 100% }
+
+/* ---------- script ---------- */
+.screenplay { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start }
+@media (max-width: 1200px) { .screenplay { grid-template-columns: 1fr } }
+.page { padding: 26px 34px; font-size: 15px; line-height: 1.95 }
+.page .h { font: 600 15px/1.6 var(--serif); margin: 22px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line-2); letter-spacing: .5px }
+.page .h:first-child { margin-top: 0 }
+.page .set { color: var(--ink-2); font-size: 14px; background: var(--panel-2); border-left: 3px solid #d9cdb4; padding: 6px 12px; margin: 6px 0 10px; border-radius: 0 6px 6px 0 }
+.page .act { color: var(--ink-2) }
+.page .say { padding-left: 2em }
+.page .say b { font-weight: 600; color: var(--jade) }
+.page .vo b { color: var(--indigo) }
+.page .chg { font-size: 13px; color: #8a6420; padding-left: 2em }
+.page .chg::before { content: "变化 "; font-size: 11px; background: var(--gold-soft); border: 1px solid #ecdfc3; border-radius: 4px; padding: 0 4px; margin-right: 6px }
+.page .beat { display: grid; grid-template-columns: 54px 1fr; gap: 6px; padding: 6px 0; border-top: 1px dashed var(--line-2) }
+.page .beat:first-of-type { border-top: 0 }
+.page .beat .id { color: var(--muted); font-size: 12px; padding-top: 4px }
+.aside { padding: 14px 16px; position: sticky; top: 150px; max-height: calc(100vh - 170px); overflow: auto }
+.aside h4 { margin: 0 0 8px; font: 600 14px/1.4 var(--serif) }
+.people { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px }
+.people div { font-size: 13px }
+
+/* ---------- story ---------- */
+.hero { padding: 28px 30px; display: flex; flex-direction: column; gap: 14px; background: linear-gradient(135deg, #fffdf9, #f8f3e8) }
+.hero h2 { margin: 0; font: 600 20px/1.4 var(--serif) }
+.hero textarea { min-height: 96px; font-size: 16px; line-height: 1.7 }
+.steps { display: flex; gap: 0; margin: 6px 0 22px; flex-wrap: wrap }
+.steps .s { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; padding-right: 14px }
+.steps .s::after { content: ""; width: 26px; height: 1px; background: var(--line); margin-left: 6px }
+.steps .s:last-child::after { display: none }
+.steps .s i { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 11px; background: var(--panel) }
+.steps .s.done { color: var(--jade) } .steps .s.done i { background: var(--jade); border-color: var(--jade); color: #fff }
+.steps .s.now { color: var(--cinnabar); font-weight: 500 } .steps .s.now i { border-color: var(--cinnabar); color: var(--cinnabar) }
+.dirs { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px }
+.dir { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; transition: .15s }
+.dir:hover { border-color: #d8ccb2; transform: translateY(-1px) }
+.dir h3 { margin: 0; font: 600 17px/1.45 var(--serif) }
+.dir .num { font: 600 12px/1 var(--sans); color: var(--cinnabar); letter-spacing: 2px }
+.dir .f { font-size: 13px; color: var(--ink-2) }
+.dir .f b { display: block; font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: 1px; margin-bottom: 1px }
+.dir .logline { font-size: 14px; color: var(--ink) }
+.stories { display: flex; flex-direction: column; gap: 8px }
+.story-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; transition: .15s }
+.story-row:hover { border-color: #d8ccb2 }
+.story-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.working { display: flex; align-items: center; gap: 12px; padding: 22px; color: var(--ink-2) }
+
+/* ---------- progress ---------- */
+.nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px }
+.node { padding: 14px 16px }
+.node h4 { margin: 0 0 10px; font: 600 15px/1.4 var(--serif); display: flex; align-items: center; gap: 8px }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--muted) }
+.chip.done { background: var(--jade-soft); color: var(--jade); border-color: #cfe3d9 }
+.chip.review { background: var(--gold-soft); color: #7a5b22; border-color: #ecdfc3 }
+.chip.running, .chip.queued { background: var(--indigo-soft); color: var(--indigo); border-color: #d6dbee }
+.chip.failed { background: var(--bad-soft); color: var(--bad); border-color: #f2cfca }
+.fail { margin-top: 10px; display: flex; flex-direction: column; gap: 8px }
+
+/* ---------- overlays ---------- */
+.dock { position: fixed; right: 26px; bottom: 22px; z-index: 6; width: 360px; padding: 14px 16px; display: none; flex-direction: column; gap: 10px; border-color: #e2d6bd; box-shadow: 0 10px 36px rgba(29,27,24,.16) }
+.dock.show { display: flex }
+.dock h4 { margin: 0; font: 600 14px/1.4 var(--serif); display: flex; align-items: center; gap: 8px }
+.dock .what { font-size: 12px; color: var(--ink-2); max-height: 72px; overflow: auto }
+.dock .btn { justify-content: center }
+.toasts { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none }
+.toast { background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 999px; box-shadow: 0 8px 26px rgba(0,0,0,.2); font-size: 13px; animation: pop .2s ease; max-width: 640px }
+.toast.err { background: var(--bad); border-radius: 12px }
+@keyframes pop { from { opacity: 0; transform: translateY(-6px) } }
+.modal { position: fixed; inset: 0; background: rgba(27,26,23,.42); display: none; align-items: center; justify-content: center; z-index: 30; backdrop-filter: blur(2px) }
+.modal.show { display: flex }
+.modal .box { width: 440px; max-width: 92vw; padding: 22px 24px; animation: pop .2s ease }
+.modal h3 { margin: 0 0 8px; font: 600 17px/1.4 var(--serif) }
+.modal p { margin: 0 0 18px; color: var(--ink-2); white-space: pre-wrap; max-height: 40vh; overflow: auto; font-size: 13px }
+.modal .row { display: flex; justify-content: flex-end; gap: 10px }
+.lightbox { position: fixed; inset: 0; background: rgba(18,17,15,.92); display: none; align-items: center; justify-content: center; z-index: 40 }
+.lightbox.show { display: flex }
+.lightbox img { max-width: 92vw; max-height: 90vh; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,.5) }
+.lightbox .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 50%; border: 0; background: rgba(255,255,255,.12); color: #fff; font-size: 22px; cursor: pointer }
+.lightbox .nav-btn:hover { background: rgba(255,255,255,.22) }
+.lightbox .prev { left: 24px } .lightbox .next { right: 24px }
+.lightbox .close { position: absolute; top: 18px; right: 22px; color: #fff; background: none; border: 0; font-size: 26px; cursor: pointer; opacity: .8 }
+.lightbox .count { position: absolute; bottom: 18px; color: #ccc; font-size: 12px }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><b>言象</b><span>漫剧工坊</span></div>
+    <div class="proj">
+      <select id="proj" title="切换项目"></select>
+      <div class="row2"><button class="run" id="run"></button><span class="gpu"><span class="dot" id="gpudot"></span><span id="gputext">GPU</span></span></div>
+      <div class="spent" id="spent"></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <div class="mainwrap">
+    <div class="top"><h1 id="title">言象</h1><div class="sub" id="subtitle"></div><div class="phases" id="phases"></div></div>
+    <main id="view"><div class="skeleton"></div></main>
+  </div>
+</div>
+<div class="card dock" id="dock"></div>
+<div class="toasts" id="toasts"></div>
+<div class="modal" id="modal"><div class="card box"><h3 id="mtitle"></h3><p id="mbody"></p><div class="row"><button class="btn" id="mno">取消</button><button class="btn accent" id="myes">确定</button></div></div></div>
+<div class="lightbox" id="lb"><button class="close" onclick="closeLb()">×</button><button class="nav-btn prev" onclick="stepLb(-1)">‹</button><img id="lbimg"><button class="nav-btn next" onclick="stepLb(1)">›</button><div class="count" id="lbcount"></div></div>
+<script>
+const $ = s => document.querySelector(s)
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+const ICON = {
+  pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9Z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  pin: '<path d="M12 21s-7-6.3-7-12a7 7 0 0 1 14 0c0 5.7-7 12-7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
+  box: '<path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  scroll: '<path d="M8 3h11v15a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-1h11v1a3 3 0 0 0 3 3"/><path d="M8 3a3 3 0 0 0-3 3v11M11 8h5M11 12h5"/>',
+  film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+  play: '<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/>',
+  pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  play2: '<path d="m7 5 12 7-12 7Z"/>', pause: '<path d="M8 5v14M16 5v14"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
+  check: '<path d="m5 12 5 5 9-10"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>', redo: '<path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.3 5.7"/>',
+  inbox: '<path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v6H3v-6Z"/>', alert: '<path d="M12 3 2 20h20Z"/><path d="M12 10v4M12 17v.5"/>',
+  back: '<path d="M15 6l-6 6 6 6"/>', sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+}
+const icon = n => '<svg class="i" viewBox="0 0 24 24">' + ICON[n] + '</svg>'
+
+let S = null, L = null, PROJ = null, STORIES = [], ST = null, SID = null
+let tab = localStorage.getItem('yx.tab') || null
+let lastKey = '', lastTab = null
+
+// ---------- helpers ----------
+function toast(text, err) {
+  const d = document.createElement('div'); d.className = 'toast' + (err ? ' err' : ''); d.textContent = text
+  $('#toasts').append(d); setTimeout(() => d.remove(), err ? 6000 : 2400)
+}
+function ask(title, body, ok = '确定') {
+  return new Promise(res => {
+    $('#mtitle').textContent = title; $('#mbody').textContent = body || ''; $('#myes').textContent = ok
+    const m = $('#modal'); m.classList.add('show')
+    const done = v => { m.classList.remove('show'); $('#myes').onclick = $('#mno').onclick = null; res(v) }
+    $('#myes').onclick = () => done(true); $('#mno').onclick = () => done(false)
+    m.onclick = e => { if (e.target === m) done(false) }
+  })
+}
+async function api(path, data, done) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data || {}) })
+    const j = await r.json()
+    if (j.ok === false || (j.error && !j.id)) { toast(j.error, true); return null }
+    if (done) toast(done)
+    return j
+  } catch (e) { toast('连不上引擎', true); return null }
+}
+async function act(path, data, done) { const j = await api(path, data, done); lastKey = ''; await Promise.all([loadStatus(), loadProjects(), LIB[tab] ? loadLib() : null]); return j }
+const decide = (review, data, done) => act('/api/reviews/' + review + '/decision', data, done)
+const go = t => { tab = t; localStorage.setItem('yx.tab', t); if (LIB[t]) { L = null; loadLib() } if (t === 'story') loadStories(); lastKey = ''; render(); window.scrollTo(0, 0) }
+
+function scopeName(scope) {
+  const p = String(scope).split('/')
+  if (p[1] === 'char' || p[1] === 'prop' || p[1] === 'loc') return p.slice(2).join(' · ')
+  if (p.length === 3 && p[2].startsWith('c')) return '第 ' + p[1].slice(1) + ' 段 · 第 ' + p[2].slice(1) + ' 镜'
+  if (p.length === 2 && p[1].startsWith('g')) return '第 ' + p[1].slice(1) + ' 段'
+  return scope === 'e1' ? '第 1 集' : scope
+}
+const KIND = { entity_brief: '外观设计', entity_image: '设定图', keyframe: '关键帧', audition: '试音', clip_draft: '草稿', cut_draft: '整集草稿', cut_final: '交付片' }
+const media = id => '/api/media/' + id
+
+// ---------- lightbox ----------
+let LB = [], LBI = 0
+function zoom(el) {
+  LB = [...document.querySelectorAll('img[data-zoom]')].map(x => x.src); LBI = Math.max(0, LB.indexOf(el.src))
+  showLb()
+}
+function showLb() { $('#lbimg').src = LB[LBI]; $('#lbcount').textContent = (LBI + 1) + ' / ' + LB.length; $('#lb').classList.add('show') }
+function stepLb(d) { if (!LB.length) return; LBI = (LBI + d + LB.length) % LB.length; showLb() }
+function closeLb() { $('#lb').classList.remove('show') }
+$('#lb').addEventListener('click', e => { if (e.target.id === 'lb') closeLb() })
+document.addEventListener('keydown', e => {
+  if ($('#lb').classList.contains('show')) { if (e.key === 'Escape') closeLb(); if (e.key === 'ArrowLeft') stepLb(-1); if (e.key === 'ArrowRight') stepLb(1) }
+  else if (e.key === 'Escape' && $('#modal').classList.contains('show')) $('#mno').click()
+})
+const zimg = (id, cls) => '<img data-zoom class="' + (cls || '') + '" src="' + media(id) + '" loading="lazy" onclick="zoom(this)">'
+
+// ---------- timeline ----------
+function tlTable(t, id) {
+  if (!t) return ''
+  let rows = ''
+  for (const c of t.cuts) {
+    rows += '<div class="cut"><b>第 ' + c.index + ' 镜</b><span class="muted small">' + c.start + '–' + c.end + ' 秒 · ' + esc(c.camera) + '</span>' +
+      (c.present && c.present.backs && c.present.backs.length ? ' <span class="badge blue">背影：' + esc(c.present.backs.join('、')) + '</span>' : '') +
+      (c.location ? ' <span class="badge">' + esc(c.location) + '</span>' : '') + '<div class="shot">' + esc(c.shot) + '</div></div>'
+    for (const e of t.timeline.filter(e => e.second >= c.start && e.second < c.end)) {
+      const lines = t.lines.filter(l => Math.floor(l.start) === e.second).map(l => '<span class="line">' + esc(l.speaker) + '：' + esc(l.text) + '</span>').join('')
+      rows += '<div class="sec" data-v="' + id + '" data-t="' + e.second + '" onclick="seek(\'' + id + '\',' + e.second + ')"><span class="t">' + e.second + 's</span><span>' + esc(e.text) + lines + '</span></div>'
+    }
+  }
+  return '<div class="tl" id="tl' + id + '">' + rows + '</div>'
+}
+function seek(id, t) { const v = document.getElementById('v' + id); if (v) { v.currentTime = t; v.play() } }
+document.addEventListener('timeupdate', e => {
+  const v = e.target; if (!v.id || !v.id.startsWith('v')) return
+  const id = v.id.slice(1), s = Math.floor(v.currentTime)
+  const box = document.getElementById('tl' + id); if (!box) return
+  box.querySelectorAll('.sec.now').forEach(x => x.classList.remove('now'))
+  const row = box.querySelector('.sec[data-t="' + s + '"]'); if (row) { row.classList.add('now'); if (!v.paused) row.scrollIntoView({ block: 'nearest' }) }
+}, true)
+
+// ---------- reviews ----------
+const reviseHint = a => a.kind === 'entity_image' || a.kind === 'keyframe' ? '会先改描述，再重出图（要再授权）' : a.kind === 'clip_draft' ? '会改这一段的时间轴，关键帧和草稿都会重出' : '会带着这条意见重写'
+function reviseBox(id, onsubmit, hint) {
+  return '<div class="revise" id="rv' + id + '"><textarea id="rt' + id + '" data-keep="rt' + id + '" placeholder="哪里不对、要怎么改"></textarea>' +
+    '<div class="rvbar"><span class="hint">' + esc(hint) + '</span><span class="sp"></span><button class="btn sm ghost" onclick="toggleRv(' + id + ')">收起</button><button class="btn sm accent" onclick="' + onsubmit + '">提交意见</button></div></div>'
+}
+function toggleRv(id) { const el = document.getElementById('rv' + id); el.classList.toggle('open'); if (el.classList.contains('open')) document.getElementById('rt' + id).focus() }
+async function sendCardRevise(review, artifact) {
+  const v = document.getElementById('rc' + review).value.trim()
+  if (!v) return toast('先写意见', true)
+  await decide(review, { action: 'revise', artifact, instruction: v }, '已按意见排队重写')
+}
+function drawer(title, body, key, badge) {
+  return '<details class="drawer" data-key="' + esc(key) + '"><summary>' + esc(title) + (badge || '') + '</summary><div class="body">' + body + '</div></details>'
+}
+function candidate(a, r, many, index) {
+  const p = a.payload || {}
+  let h = ''
+  if (a.media && a.mime && a.mime.startsWith('image/')) h += '<div class="media">' + zimg(a.media) + (many ? '<span class="tag">候选 ' + (index + 1) + '</span>' : '') + '</div>'
+  if (a.media && a.mime === 'video/mp4') h += '<div class="clip"><video id="v' + a.id + '" controls preload="metadata" src="' + media(a.media) + '"></video>' + (a.timeline ? tlTable(a.timeline, a.id) : '<div></div>') + '</div>'
+  if (a.media && a.mime && a.mime.startsWith('audio/')) h += '<audio controls src="' + media(a.media) + '"></audio>'
+  if (p.text && !a.media) h += '<div class="textbody">' + esc(p.text) + '</div>'
+  if (p.line) h += '<div class="notice ok">' + icon('sparkle') + '<span>试音台词：「' + esc(p.line) + '」· ' + p.seconds + ' 秒</span></div>'
+  if (p.dropped && p.dropped.length) h += '<div class="notice">' + icon('alert') + '<span>超过 9 张参考图或 3 段音色的上限，没绑上：' + esc(p.dropped.join('、')) + '</span></div>'
+  if (p.unmeasured && p.unmeasured.length) h += '<div class="notice">' + icon('alert') + '<span>这几句没从声音里找到，字幕用的是计划时间：' + esc(p.unmeasured.join(' / ')) + '</span></div>'
+  if (p.adjusted && p.adjusted.length) h += '<div class="notice">' + icon('alert') + '<span>这些段的裁剪超出允许范围，被程序收紧过：' + esc(p.adjusted.join('、')) + '</span></div>'
+  if (p.checks) h += '<table class="checks">' + p.checks.map(c => '<tr><td>' + esc(c.check) + '</td><td>' + (c.ok ? '<span class="badge jade">通过</span> ' : '<span class="badge red">不通过</span> ') + esc(c.detail) + '</td></tr>').join('') + '</table><div class="muted small">交付文件夹：' + esc(p.folder) + '</div>'
+  let drawers = ''
+  for (const c of a.context) drawers += drawer(c.title, '<pre>' + esc(c.body) + '</pre>', 'c' + a.id + c.title)
+  if (p.prompt) drawers += drawer('提示词', '<pre>' + esc(p.prompt) + '</pre>', 'p' + a.id)
+  h += drawers ? '<div>' + drawers + '</div>' : ''
+  let bar = '<div class="bar"><span class="muted small">第 ' + a.version + ' 版</span><span class="sp"></span>'
+  if (many) bar += '<button class="btn sm primary" onclick="decide(' + r.id + ',{action:\'pick\',artifact:' + a.id + '},\'已选定\')">' + icon('check') + '选这张</button>'
+  bar += '</div>'
+  h += bar
+  return '<div class="cand">' + h + '</div>'
+}
+async function redo(r) { if (await ask('重出一次？', '同样的输入换一个种子再出一次，需要再授权。', '重出')) decide(r, { action: 'redo' }, '已排队重出') }
+function reviewCard(r) {
+  const many = r.artifacts.length > 1
+  const kinds = r.artifacts.map(a => a.kind)
+  const video = kinds.some(k => ['clip_draft', 'cut_draft', 'cut_final', 'audition'].includes(k))
+  const text = r.artifacts.every(a => !a.media)
+  const paid = r.artifacts.some(a => a.media)
+  const pickOne = r.point === 5 || r.point === 7
+  let foot = '<span class="muted small">' + (many ? r.artifacts.length + ' 个候选，选一张' : '审核 ' + r.id) + '</span><span class="sp"></span>'
+  if (paid) foot += '<button class="btn" onclick="redo(' + r.id + ')">' + icon('redo') + '重出</button>'
+  if (!many) foot += '<button class="btn primary" onclick="decide(' + r.id + ',{action:\'' + (pickOne ? 'pick' : 'approve') + '\',artifact:' + r.artifacts[0].id + '},\'已通过\')">' + icon('check') + (r.point === 7 ? '采用' : '通过') + '</button>'
+  // Candidates of one review come from the same text, so one note per review goes to it.
+  const target = r.artifacts.find(a => a.revisable)
+  const note = target
+    ? '<div class="note"><textarea id="rc' + r.id + '" data-keep="rc' + r.id + '" placeholder="评审意见：哪里不对、要怎么改"></textarea><div class="rvbar"><span class="hint">' + esc(reviseHint(target)) + '</span><span class="sp"></span><button class="btn accent" onclick="sendCardRevise(' + r.id + ',' + target.id + ')">' + icon('edit') + '按意见重写</button></div></div>'
+    : '<div class="note muted small">这一步没有可改的文字，不满意就点「重出」</div>'
+  return '<article class="card review"><header><span class="badge gold">' + esc(KIND[kinds[0]] || kinds[0]) + '</span><h3>' + esc(scopeName(r.scope)) + '</h3><span class="sp"></span><span class="muted small">' + esc(r.scope) + '</span></header>' +
+    '<div class="cands' + (video || text ? ' wide' : many ? '' : ' single') + '">' + r.artifacts.map((a, i) => candidate(a, r, many, i)).join('') + '</div>' +
+    note + '<div class="actions">' + foot + '</div></article>'
+}
+function reviewsPage(point) {
+  const list = S.reviews.filter(r => r.point === point)
+  if (!list.length) return emptyState('inbox', '这一项都审完了', '新的待审会自动出现在左侧')
+  return list.map(reviewCard).join('')
+}
+
+// ---------- library ----------
+const LIB = { characters: ['人物', 'user'], locations: ['地点', 'pin'], props: ['道具', 'box'], script: ['剧本', 'scroll'], storyboard: ['分镜', 'film'], videos: ['视频', 'play'] }
+const STATUS = { draft: ['待审', 'gold'], stale: ['等重做', 'red'] }
+const st = x => x && STATUS[x.status] ? ' <span class="badge ' + STATUS[x.status][1] + '">' + STATUS[x.status][0] + '</span>' : ''
+const txt = x => x && x.payload && x.payload.text ? x.payload.text : ''
+function libRevise(x, hint) {
+  if (!x) return ''
+  return '<div class="rvbar" style="padding:6px 0 10px"><span class="sp"></span><button class="btn sm" onclick="toggleRv(' + x.id + ')">' + icon('edit') + '提意见</button></div>' + reviseBox(x.id, 'sendLibRevise(' + x.id + ')', hint)
+}
+async function sendLibRevise(id) {
+  const v = document.getElementById('rt' + id).value.trim()
+  if (!v) return toast('先写意见', true)
+  await act('/api/revise', { artifact: id, instruction: v }, '已按意见排队重写')
+}
+function entities(list, wide) {
+  if (!list.length) return emptyState(LIB[tab][1], '还没有', '剧本拆出出场清单后会出现在这里')
+  return '<div class="grid' + (wide ? ' wide' : '') + '">' + list.map(e => '<div class="card ent"><div class="cover">' + (e.image && e.image.media ? zimg(e.image.media) : '<span class="none">还没出图</span>') + '</div>' +
+    '<div class="body"><div class="name"><b>' + esc(e.name) + '</b>' + st(e.image) + '</div>' +
+    (e.extras.length ? '<div class="thumbs">' + e.extras.map(x => '<div class="thumb" title="' + esc(x.note || '') + '">' + (x.image && x.image.media ? zimg(x.image.media) : '<div class="ph">未出</div>') + esc(x.label) + '</div>').join('') + '</div>' : '') +
+    '<div>' + (txt(e.brief) ? drawer('外观要点', '<pre>' + esc(txt(e.brief)) + '</pre>', 'b' + e.scope, st(e.brief)) : '') + (txt(e.desc) ? drawer('定妆描述', '<pre>' + esc(txt(e.desc)) + '</pre>', 'd' + e.scope) : '') + '</div>' +
+    libRevise(e.brief, '改外观设计，描述和图会跟着重来') + '</div></div>').join('') + '</div>'
+}
+function formatScreenplay(text) {
+  return String(text || '').split('\n').map(line => {
+    const l = line.trim(); if (!l) return ''
+    if (/^场\d+/.test(l)) return '<div class="h">' + esc(l) + '</div>'
+    if (l.startsWith('△')) return '<div class="act">' + esc(l.slice(1).trim()) + '</div>'
+    if (/^\[变化\]/.test(l)) return '<div class="chg">' + esc(l.replace(/^\[变化\]\s*/, '')) + '</div>'
+    const m = /^([^：:△\[\]，。]{1,16})[：:](.+)$/.exec(l)
+    if (m) return '<div class="say' + (m[1].includes('画外音') ? ' vo' : '') + '"><b>' + esc(m[1]) + '</b>：' + esc(m[2]) + '</div>'
+    return '<div class="set">' + esc(l) + '</div>'
+  }).join('')
+}
+function rosterAside(r, extra) {
+  return '<div class="card aside"><h4>出场</h4><div class="people">' + r.characters.map(c => '<div><b>' + esc(c.name) + '</b> <span class="muted">' + esc(c.gender + ' · ' + c.age_look) + '</span>' + (c.tier ? ' <span class="badge">' + esc(c.tier) + '</span>' : '') + '</div>').join('') + '</div>' +
+    '<div class="small"><span class="muted">地点</span>　' + r.locations.map(l => esc(l.name)).join('、') + '</div><div class="small" style="margin-bottom:8px"><span class="muted">道具</span>　' + (r.props.map(p => esc(p.name)).join('、') || '无') + '</div>' + (extra || '') + '</div>'
+}
+function scriptPage(sc) {
+  if (!sc) return emptyState('scroll', '还没有剧本', '')
+  let page = ''
+  for (const s of sc.scenes) {
+    page += '<div class="h">' + esc(s.id + ' · ' + s.location) + '</div>' + (s.setting ? '<div class="set">' + esc(s.setting) + '</div>' : '')
+    for (const b of s.beats) page += '<div class="beat"><span class="id">' + esc(b.id) + '<br>' + b.seconds + 's</span><div><div class="act">' + esc(b.action) + '</div>' +
+      b.lines.map(l => '<div class="say' + (l.vo ? ' vo' : '') + '"><b>' + esc(l.speaker) + (l.vo ? '（画外音）' : '') + '</b>：' + esc(l.text) + '</div>').join('') +
+      (b.changes.length ? '<div class="chg">' + esc(b.changes.join('；')) + '</div>' : '') + '</div></div>'
+  }
+  const secs = sc.scenes.flatMap(s => s.beats).reduce((a, b) => a + b.seconds, 0)
+  return '<div class="screenplay"><div class="card page">' + page + '</div>' + rosterAside(sc.roster, '<div class="muted small">' + sc.scenes.flatMap(s => s.beats).length + ' 拍 · 约 ' + secs + ' 秒</div>') + '</div>'
+}
+function storyboard(list) {
+  if (!list.length) return emptyState('film', '还没有分段', '人物、地点、道具都锁定后自动分段')
+  return list.map(s => '<article class="card seg"><header><h3>第 ' + s.id.slice(1) + ' 段</h3><span class="badge">' + esc(s.location) + '</span><span class="badge">' + s.seconds + ' 秒</span>' + (s.continues ? '<span class="badge blue">承接上一段</span>' : '') + st(s.timeline) + '<div class="sum">' + esc(s.summary) + '</div></header>' +
+    '<div class="body"><div>' + (s.timeline ? tlTable(s.timeline.payload, 's' + s.id) : '<div class="skeleton" style="height:80px"></div><div class="muted small" style="margin-top:6px">时间轴还没写</div>') + libRevise(s.timeline, '改这一段的时间轴，关键帧和草稿都会重来') + '</div>' +
+    '<div class="kfs">' + s.cuts.map(c => '<div class="kf"><div class="img">' + (s.continues && c.index === 1 ? '接上一段的尾巴' : c.keyframe && c.keyframe.media ? zimg(c.keyframe.media) : '关键帧未出') + '</div>第 ' + c.index + ' 镜 · ' + c.start + 's' + st(c.keyframe) +
+      (txt(c.desc) ? drawer('描述', '<pre>' + esc(txt(c.desc)) + '</pre>', 'k' + s.id + c.index) : '') + '</div>').join('') + '</div></div></article>').join('')
+}
+const vid = x => x && x.media ? '<video controls preload="metadata" src="' + media(x.media) + '" style="width:100%;border-radius:8px;background:#000"></video>' : ''
+function videos(l) {
+  let h = ''
+  if (l.speakers.length) h += '<h3 class="sec">' + icon('sparkle') + '试音与音色</h3><div class="grid">' + l.speakers.map(v => '<div class="card ent"><div class="body"><div class="name"><b>' + esc(v.name) + '</b>' + st(v.audition) + '</div>' + vid(v.audition) +
+    (v.voice && v.voice.media ? '<div class="muted small">截出的音色 ' + v.voice.payload.from + '–' + v.voice.payload.to + ' 秒</div><audio controls src="' + media(v.voice.media) + '" style="width:100%"></audio>' : '') + '</div></div>').join('') + '</div>'
+  const clips = l.segments.filter(s => s.draft || s.final)
+  if (clips.length) h += '<h3 class="sec">' + icon('video') + '每段的片子</h3><div class="grid wide">' + clips.map(s => '<div class="card ent"><div class="body"><div class="name"><b>第 ' + s.id.slice(1) + ' 段</b>' + st(s.draft) + '</div>' +
+    (s.final ? '<div class="muted small">精修片</div>' + vid(s.final) : '') + (s.draft ? '<div class="muted small">草稿' + (s.trim ? ' · 用 ' + s.trim.payload.in + '–' + s.trim.payload.out + ' 秒' : '') + '</div>' + vid(s.draft) : '') + '</div></div>').join('') + '</div>'
+  if (l.cutDraft) h += '<h3 class="sec">' + icon('film') + '整集草稿</h3><div class="card" style="padding:14px">' + vid(l.cutDraft) + '</div>'
+  if (l.cutFinal) h += '<h3 class="sec">' + icon('play') + '交付片</h3><div class="card" style="padding:14px">' + vid(l.cutFinal) + '</div>'
+  return h || emptyState('play', '还没有出片', 'GPU 开机、授权出片后，试音和草稿会出现在这里')
+}
+function libPage() {
+  if (!L) return '<div class="skeleton"></div>'
+  if (tab === 'characters') return entities(L.characters)
+  if (tab === 'locations') return entities(L.locations, true)
+  if (tab === 'props') return entities(L.props)
+  if (tab === 'script') return scriptPage(L.script)
+  if (tab === 'storyboard') return storyboard(L.segments)
+  return videos(L)
+}
+
+// ---------- story ----------
+const STEPS = [['directions', '故事方向'], ['setup', '本集设定'], ['script', '剧本初稿'], ['script-review', '审读'], ['script-revised', '改写'], ['script-extract', '拆成拍']]
+function stepsBar(s) {
+  const done = { directions: !!s.directions, setup: !!s.setup, script: !!s.draft, 'script-review': !!s.review, 'script-revised': !!s.text, 'script-extract': !!s.script }
+  return '<div class="steps">' + STEPS.map(([k, v], i) => {
+    const now = s.busy && s.step === k
+    return '<span class="s ' + (now ? 'now' : done[k] ? 'done' : '') + '"><i>' + (now ? '<span class="spin" style="width:10px;height:10px;border-width:1.5px"></span>' : done[k] ? '✓' : i + 1) + '</i>' + v + '</span>'
+  }).join('') + '</div>'
+}
+function storyStatus(s) {
+  if (s.busy) return '<span class="badge blue"><span class="spin" style="width:9px;height:9px;border-width:1.5px"></span>正在写</span>'
+  if (s.project) return '<span class="badge jade">已建项目</span>'
+  if (s.script) return '<span class="badge gold">剧本待你看</span>'
+  if (s.directions && s.chosen === undefined) return '<span class="badge gold">方向待你挑</span>'
+  return s.error ? '<span class="badge red">出错了</span>' : '<span class="badge">未完成</span>'
+}
+function dirCard(d, i, chosen) {
+  const f = (k, v) => '<div class="f"><b>' + k + '</b>' + esc(v) + '</div>'
+  return '<div class="card dir"><span class="num">方向 ' + (i + 1) + '</span><h3>' + esc(d.title) + '</h3><div class="logline">' + esc(d.logline) + '</div>' +
+    f('主角的策略', d.strategy) + f('对抗', d.opposition) + f('代价', d.cost) + f('本集兑现', d.payoff) + f('开场画面', d.opening) +
+    (chosen === undefined ? '<button class="btn primary" style="align-self:flex-start;margin-top:4px" onclick="chooseDir(' + i + ')">' + icon('check') + '就写这个</button>' : '') + '</div>'
+}
+async function startStory() {
+  const idea = $('#idea').value.trim()
+  if (!idea) return toast('先写一句想法', true)
+  const j = await api('/api/stories', { idea }, '开始出方向')
+  if (j && j.id) { SID = j.id; ST = null; $('#idea').value = ''; await loadStories() }
+}
+const openStory = id => { SID = id; ST = null; lastKey = ''; loadStories() }
+const backToStories = () => { SID = null; ST = null; lastKey = ''; loadStories() }
+async function chooseDir(i) { if (await api('/api/stories/' + SID + '/choose', { index: i }, '开始写剧本，大约几分钟')) loadStories() }
+async function redirectStory() {
+  const note = ($('#dnote') && $('#dnote').value.trim()) || ''
+  if (!note && !await ask('不写意见直接重出？', '没写意见的话，只是用同一句想法再出三个。', '直接重出')) return
+  if (await api('/api/stories/' + SID + '/redirect', { note }, '重新出方向')) { if ($('#dnote')) $('#dnote').value = ''; loadStories() }
+}
+async function reviseStory() {
+  const note = $('#note').value.trim()
+  if (!note) return toast('先写意见', true)
+  if (await api('/api/stories/' + SID + '/revise', { note }, '按意见改剧本')) { $('#note').value = ''; loadStories() }
+}
+async function makeProject() {
+  if (!await ask('用这个剧本建项目？', '建好后引擎切到新项目开始跑：外观设计不花钱，出图仍要你授权。', '建项目')) return
+  const j = await api('/api/stories/' + SID + '/project', {}, '项目已建好')
+  if (j && j.dir) { L = null; await loadProjects(); go('characters') }
+}
+function storyPage() {
+  if (!SID) {
+    return '<div class="card hero"><h2>从一句想法开始</h2><div class="muted">先出三个故事方向，你挑一个，再写成 45–60 秒的剧本：本集设定、正文、审读、改写、拆拍，一步步自动完成。</div>' +
+      '<textarea id="idea" data-keep="idea" placeholder="例如：被认为是废柴的小伙其实是绝顶资质，一次奇遇之后觉醒，一鸣惊人"></textarea>' +
+      '<div><button class="btn accent" onclick="startStory()">' + icon('sparkle') + '出三个方向</button></div></div>' +
+      (STORIES.length ? '<h3 class="sec">之前的故事</h3><div class="stories">' + STORIES.map(s => '<div class="card story-row" onclick="openStory(\'' + s.id + '\')"><span class="t">' + esc(s.directions && s.chosen !== undefined ? s.directions[s.chosen].title : s.idea) + '</span>' + storyStatus(s) + '</div>').join('') + '</div>' : '')
+  }
+  if (!ST) return '<div class="skeleton"></div>'
+  const s = ST
+  let h = '<button class="btn ghost sm" onclick="backToStories()" style="margin-bottom:10px">' + icon('back') + '所有故事</button>' + stepsBar(s)
+  if (s.error) h += '<div class="notice bad" style="margin-bottom:16px">' + icon('alert') + '<span>上一步出错了：' + esc(s.error) + '</span></div>'
+  if (s.busy && !s.directions) return h + '<div class="card working"><span class="spin"></span>正在出三个方向，大约半分钟…</div>'
+  if (s.directions && s.chosen === undefined) {
+    return h + '<h3 class="sec">★2 挑一个方向</h3><div class="dirs">' + s.directions.map((d, i) => dirCard(d, i)).join('') + '</div>' +
+      '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">都不满意？说说哪里不对</b>' +
+      '<textarea id="dnote" data-keep="dnote" placeholder="例如：主角要更狠一点，别靠奇遇，靠他自己设的局"></textarea>' +
+      '<div class="rvbar"><span class="hint">会带着这三个方向和你的意见，重新出三个</span><span class="sp"></span><button class="btn accent" onclick="redirectStory()">' + icon('redo') + '按意见重新出</button></div></div>'
+  }
+  if (s.busy) return h + '<div class="card working"><span class="spin"></span><div><div>正在写「' + esc((STEPS.find(x => x[0] === s.step) || [, '剧本'])[1]) + '」</div><div class="muted small">整个剧本一般 3–6 分钟，写完自动显示</div></div></div>'
+  const rewriteBtn = s.chosen !== undefined ? '<button class="btn" onclick="chooseDir(' + s.chosen + ')">' + icon('redo') + '从头重写这个方向</button>' : ''
+  if (!s.script && !s.text) return h + rewriteBtn
+  if (!s.script) {
+    return h + '<h3 class="sec">★3 剧本正文 · 还没拆成拍</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div><div class="card aside">' +
+      drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss') + (s.review ? drawer('审读意见', '<pre>' + esc(s.review) + '</pre>', 'sr') : '') + '</div></div>' +
+      '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：太长了，删掉第二场的追逐，直接进对峙"></textarea>' +
+      '<div style="display:flex;gap:10px"><button class="btn accent" onclick="reviseStory()">' + icon('edit') + '按意见改，再拆成拍</button><span style="flex:1"></span>' + rewriteBtn + '</div></div>'
+  }
+  const beats = s.script.scenes.flatMap(x => x.beats), secs = beats.reduce((a, b) => a + b.seconds, 0)
+  let side = '<div class="muted small" style="margin-bottom:10px">' + beats.length + ' 拍 · 约 ' + secs + ' 秒</div>'
+  side += drawer('选定的方向', '<pre>' + esc(['梗概：' + s.directions[s.chosen].logline, '本集兑现：' + s.directions[s.chosen].payoff].join('\n')) + '</pre>', 'sd')
+  side += drawer('本集设定', '<pre>' + esc(s.setup) + '</pre>', 'ss')
+  side += drawer('审读意见（已按它改过）', '<pre>' + esc(s.review) + '</pre>', 'sr')
+  if (s.notes && s.notes.length) side += drawer('你提过的意见（' + s.notes.length + ' 条，已改）', '<pre>' + esc(s.notes.join('\n\n')) + '</pre>', 'sn')
+  h += '<h3 class="sec">★3 看剧本 · ' + esc(s.directions[s.chosen].title) + '</h3><div class="screenplay"><div class="card page">' + formatScreenplay(s.text) + '</div>' + rosterAside(s.script.roster, side) + '</div>'
+  if (s.project) return h + '<div class="notice ok" style="margin-top:16px">' + icon('check') + '<span>已经建成项目，在左上角的项目里切过去看。</span></div>'
+  h += '<div class="card" style="padding:16px 18px;margin-top:18px;display:flex;flex-direction:column;gap:10px"><b style="font-family:var(--serif)">哪里要改</b><textarea id="note" data-keep="note" placeholder="例如：主角觉醒得太突然，前面要有铺垫"></textarea>' +
+    '<div style="display:flex;gap:10px"><button class="btn" onclick="reviseStory()">' + icon('edit') + '按意见改</button><span style="flex:1"></span><button class="btn accent" onclick="makeProject()">' + icon('check') + '用这个剧本建项目</button></div></div>'
+  return h
+}
+
+// ---------- progress ----------
+const LABEL = { done: '完成', review: '待审', running: '在跑', queued: '排队', failed: '失败', waiting: '等前置' }
+async function resubmit(id) { if (await ask('重提这个视频任务？', '它可能没提交成功。重提会再占一次 GPU。', '重提')) act('/api/jobs/' + id + '/resolve', {}, '已重提') }
+function progressPage() {
+  let h = ''
+  if (S.unknown.length) h += S.unknown.map(j => '<div class="notice bad" style="margin-bottom:10px">' + icon('alert') + '<span style="flex:1">视频任务 ' + j.id + ' 可能没提交成功：' + esc(j.error) + '</span><button class="btn sm" onclick="resubmit(' + j.id + ')">重提</button></div>').join('')
+  h += '<div class="nodes">' + S.progress.map(n => {
+    const all = n.items.every(i => i.status === 'done')
+    const count = k => n.items.filter(i => i.status === k).length
+    const head = '<h4>' + esc(n.title) + '<span class="sp" style="flex:1"></span><span class="muted small">' + count('done') + ' / ' + n.items.length + '</span></h4>'
+    if (all) return '<div class="card node">' + head + '<span class="chip done">全部完成</span></div>'
+    const fails = n.items.filter(i => i.status === 'failed')
+    return '<div class="card node">' + head + '<div class="chips">' + n.items.map(i => '<span class="chip ' + i.status + '" title="' + esc(i.scope) + '">' + esc(scopeName(i.scope)) + ' · ' + LABEL[i.status] + '</span>').join('') + '</div>' +
+      (fails.length ? '<div class="fail">' + fails.map(i => '<div class="notice bad">' + icon('alert') + '<span style="flex:1"><b>' + esc(scopeName(i.scope)) + '</b>：' + esc(i.error) + '</span>' + (i.run ? '<button class="btn sm" onclick="act(\'/api/node-runs/' + i.run + '/retry\',{},\'已重试\')">重试</button>' : '') + '</div>').join('') + '</div>' : '') + '</div>'
+  }).join('') + '</div>'
+  return h
+}
+
+// ---------- chrome ----------
+const PHASES = [['设计', ['brief', 'desc', 'image', 'derive']], ['分镜', ['plan', 'timeline', 'views', 'view', 'kfdesc', 'keyframe']], ['声音与草稿', ['audition', 'voice', 'draft', 'trim', 'cut_draft']], ['成片', ['refine', 'cut_final']]]
+function phases() {
+  return PHASES.map(([name, nodes]) => {
+    const ns = S.progress.filter(n => nodes.includes(n.node))
+    const items = ns.flatMap(n => n.items), done = items.filter(i => i.status === 'done').length
+    const bar = ns.map(n => {
+      const t = n.items.length || 1, c = k => n.items.filter(i => i.status === k).length
+      const w = (k, cls) => c(k) ? '<b class="' + cls + '" style="width:' + (100 * c(k) / t) + '%"></b>' : ''
+      const tip = n.title + '：完成 ' + c('done') + ' / ' + n.items.length + (c('review') ? '，待审 ' + c('review') : '') + (c('running') + c('queued') ? '，在跑 ' + (c('running') + c('queued')) : '') + (c('failed') ? '，失败 ' + c('failed') : '')
+      return '<i title="' + esc(tip) + '">' + w('done', 'g') + w('review', 'y') + (c('running') + c('queued') ? '<b class="n" style="width:' + (100 * (c('running') + c('queued')) / t) + '%"></b>' : '') + w('failed', 'r') + '</i>'
+    }).join('') || '<i></i>'
+    return '<div class="phase"><div class="lbl"><span>' + name + '</span><em>' + done + ' / ' + items.length + '</em></div><div class="segbar">' + bar + '</div></div>'
+  }).join('')
+}
+const POINT_ICON = { 4: 'user', 5: 'image', 6: 'film', 7: 'video', 8: 'film', 9: 'play' }
+function nav() {
+  const groups = {}
+  for (const r of S.reviews) (groups[r.point] = groups[r.point] || []).push(r)
+  const points = Object.keys(groups).map(Number).sort((a, b) => a - b)
+  const failed = S.progress.reduce((n, x) => n + x.items.filter(i => i.status === 'failed').length, 0) + S.unknown.length
+  const item = (key, label, ic, n, muted) => '<div class="item' + (tab === key ? ' sel' : '') + '" onclick="go(' + (typeof key === 'number' ? key : '\'' + key + '\'') + ')">' + icon(ic) + '<span>' + label + '</span>' + (n ? '<span class="n' + (muted ? ' muted' : '') + '">' + n + '</span>' : '') + '</div>'
+  const busy = STORIES.filter(s => s.busy).length
+  return '<h4>写故事</h4>' + item('story', '新故事', 'pen', busy || 0, true) +
+    '<h4>待审</h4>' + (points.length ? points.map(p => item(p, '★' + p + ' ' + groups[p][0].title, POINT_ICON[p] || 'star', groups[p].length)).join('') : '<div class="none">没有待审的</div>') +
+    '<h4>已有</h4>' + Object.entries(LIB).map(([k, [v, ic]]) => item(k, v, ic)).join('') +
+    '<h4>流程</h4>' + item('progress', '进度', 'pulse', failed)
+}
+const NODE = { image: '定妆照', derive: '三视图与特写', view: '机位图', keyframe: '关键帧', audition: '试音', draft: '草稿', refine: '精修' }
+function batch(pool) {
+  const list = S.pending.filter(p => !p.gpu && p.pool === pool)
+  const n = list.reduce((x, p) => x + p.count, 0)
+  const per = {}
+  for (const p of list) per[p.node] = (per[p.node] || 0) + p.count
+  return { n, brief: Object.entries(per).map(([k, c]) => (NODE[k] || k) + ' ' + c + (pool === 'image' ? ' 张' : ' 段')).join('、'), what: list.map(p => (NODE[p.node] || p.node) + ' ' + scopeName(p.scope) + (p.count > 1 ? ' ×' + p.count : '')).join('、') }
+}
+async function grant(pool) {
+  const b = batch(pool)
+  const label = pool === 'image' ? '开始出图 ' + b.n + ' 张（约 $' + (b.n * S.imageUsd).toFixed(2) + '）' : '开始出片 ' + b.n + ' 段'
+  if (b.n && await ask(label + '？', b.what, '开始')) act('/api/permits', { scope: 'e1', pool, count: b.n }, '已授权')
+}
+function dock() {
+  const img = batch('image'), vidb = batch('video'), gpuWait = S.pending.filter(p => p.gpu)
+  if (!img.n && !vidb.n && !gpuWait.length) return ''
+  let h = '<h4>' + icon('sparkle') + '等你开始</h4>'
+  if (img.n) h += '<div class="what">' + esc(img.brief) + '</div><button class="btn accent" onclick="grant(\'image\')">' + icon('image') + '开始出图 ' + img.n + ' 张 · 约 $' + (img.n * S.imageUsd).toFixed(2) + '</button>'
+  if (vidb.n) h += '<div class="what">' + esc(vidb.brief) + '</div><button class="btn accent" onclick="grant(\'video\')">' + icon('video') + '开始出片 ' + vidb.n + ' 段' + (S.gpu ? '' : '（GPU 开机后才跑）') + '</button>'
+  if (gpuWait.length) h += '<div class="notice">' + icon('alert') + '<span>已授权、等 GPU 开机：' + esc(gpuWait.map(p => (NODE[p.node] || p.node) + ' ' + scopeName(p.scope)).join('、')) + '</span></div>'
+  return h
+}
+function emptyState(ic, title, sub) { return '<div class="empty">' + icon(ic) + '<b>' + esc(title) + '</b>' + esc(sub) + '</div>' }
+
+function titles() {
+  if (tab === 'story') return ['新故事', SID ? '' : '一句想法 → 三个方向 → 剧本 → 建项目']
+  if (tab === 'progress') return ['进度', '每一步在每个人物、地点、段落上的状态']
+  if (LIB[tab]) return [LIB[tab][0], '现在用的版本；标「待审」「等重做」的还没定下来']
+  const r = S.reviews.find(x => x.point === tab)
+  return ['★' + tab + ' ' + (r ? r.title : ''), (S.reviews.filter(x => x.point === tab).length || 0) + ' 项待审']
+}
+// Keep what the creator is in the middle of across a re-render: open drawers, open note boxes, typed text, scroll.
+function snapshot() {
+  return {
+    open: [...document.querySelectorAll('details[open][data-key]')].map(d => d.dataset.key),
+    rv: [...document.querySelectorAll('.revise.open')].map(d => d.id),
+    keep: Object.fromEntries([...document.querySelectorAll('[data-keep]')].map(t => [t.dataset.keep, t.value])),
+    focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.keep : null,
+    y: window.scrollY,
+  }
+}
+function restore(s) {
+  s.open.forEach(k => { const d = document.querySelector('details[data-key="' + CSS.escape(k) + '"]'); if (d) d.open = true })
+  s.rv.forEach(id => { const d = document.getElementById(id); if (d) d.classList.add('open') })
+  for (const [k, v] of Object.entries(s.keep)) { const t = document.querySelector('[data-keep="' + CSS.escape(k) + '"]'); if (t) t.value = v }
+  if (s.focus) { const t = document.querySelector('[data-keep="' + CSS.escape(s.focus) + '"]'); if (t) t.focus() }
+  window.scrollTo(0, s.y)
+}
+function render() {
+  if (!S) return
+  const groups = new Set(S.reviews.map(r => r.point))
+  if (tab === null || (typeof tab === 'string' && /^\d+$/.test(tab))) tab = tab === null ? null : Number(tab)
+  if (tab === null || (typeof tab === 'number' && !groups.has(tab))) tab = groups.size ? Math.min(...groups) : (tab === null ? 'story' : 'characters')
+  const key = JSON.stringify([tab, S, LIB[tab] ? L : null, tab === 'story' ? [SID, ST, STORIES] : null])
+  if (key === lastKey) return
+  // Never pull a playing clip out from under the creator; the new data shows once it is paused.
+  const playing = [...document.querySelectorAll('video, audio')].some(v => !v.paused)
+  if (playing && tab === lastTab) return
+  lastKey = key
+  lastTab = tab
+  const snap = snapshot()
+  $('#gpudot').className = 'dot ' + (S.gpu ? 'on' : 'off')
+  $('#gputext').textContent = S.gpu ? 'GPU 在线' : 'GPU 离线'
+  $('#spent').textContent = '已花 $' + S.spent.usd.toFixed(3) + ' · 出片 ' + S.spent.videos + ' 段'
+  $('#phases').innerHTML = phases()
+  $('#nav').innerHTML = nav()
+  const [t, sub] = titles(); $('#title').textContent = t; $('#subtitle').textContent = sub
+  $('#view').innerHTML = tab === 'story' ? storyPage() : tab === 'progress' ? progressPage() : LIB[tab] ? libPage() : reviewsPage(tab)
+  const d = dock(); $('#dock').innerHTML = d; $('#dock').classList.toggle('show', !!d)
+  restore(snap)
+}
+
+// ---------- data ----------
+async function loadStatus() {
+  try { S = await (await fetch('/api/status')).json() } catch (e) { $('#view').innerHTML = emptyState('alert', '连不上引擎', 'bun src/m1/run.ts 在跑吗？每 4 秒重试一次'); lastKey = ''; return }
+  render()
+}
+async function loadLib() { try { L = await (await fetch('/api/library')).json() } catch (e) { return } render() }
+async function loadStories() {
+  try {
+    if (SID) ST = await (await fetch('/api/stories/' + SID)).json()
+    STORIES = await (await fetch('/api/stories')).json()
+  } catch (e) { return }
+  render()
+}
+async function loadProjects() {
+  try { PROJ = await (await fetch('/api/projects')).json() } catch (e) { return }
+  $('#proj').innerHTML = PROJ.projects.map(p => '<option value="' + esc(p.dir) + '"' + (p.current ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('')
+  const b = $('#run'); b.className = 'run' + (PROJ.paused ? '' : ' on'); b.innerHTML = PROJ.paused ? icon('play2') + '已暂停 · 继续' : icon('pause') + '运行中 · 暂停'
+}
+$('#proj').onchange = async e => { if (await api('/api/projects/switch', { dir: e.target.value }, '已切换（先暂停着）')) { L = null; tab = null; lastKey = ''; await loadProjects(); loadStatus() } else loadProjects() }
+$('#run').onclick = async () => { await api('/api/pause', { paused: !PROJ.paused }, PROJ.paused ? '开始跑' : '已暂停'); loadProjects() }
+
+loadProjects(); loadStories(); loadStatus()
+setInterval(() => { loadStatus(); loadProjects(); if (LIB[tab]) loadLib() }, 4000)
+setInterval(() => { if (tab === 'story' || STORIES.some(s => s.busy)) loadStories() }, 3000)
+</script>
+</body>
+</html>

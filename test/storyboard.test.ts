@@ -43,7 +43,7 @@ const PLAN: PlanT = {
 }
 
 const cut = (index: number, start: number, end: number, view: string, characters: string[], props: string[]): TimelineT['cuts'][number] =>
-  ({ index, start, end, camera: '固定', shot: '中景', present: { characters, props, view } })
+  ({ index, start, end, camera: '固定', shot: '中景', present: { characters, backs: [], props, view } })
 
 const TL1: TimelineT = {
   seconds: 10,
@@ -54,6 +54,7 @@ const TL1: TimelineT = {
   timeline: Array.from({ length: 10 }, (_, second) => ({ second, text: `第${second}秒`, changes: second === 5 ? ['婚书展开'] : [] })),
   lines: [{ speaker: '柳含烟', text: '签字。', start: 6, end: 8 }],
   ambience: '洞风',
+  fight: false,
 }
 
 const TL2: TimelineT = {
@@ -65,6 +66,7 @@ const TL2: TimelineT = {
   timeline: Array.from({ length: 4 }, (_, second) => ({ second, text: `续${second}`, changes: [] })),
   lines: [],
   ambience: '洞风',
+  fight: false,
 }
 
 function project() {
@@ -226,4 +228,16 @@ test('a picture drawn earlier can be adopted for a view without drawing again', 
   await round(e)
   expect(store.locked('keyframe_desc', 'e1/g1/c2')).toBeTruthy()
   expect(images.submits).toHaveLength(0)
+})
+
+test('a timeline stored before back views were marked still reads, as portraits', async () => {
+  const store = project()
+  const e = engine(store)
+  await upToViews(e, store)
+  await round(e)
+  expect(store.locked('keyframe_desc', 'e1/g1/c1')).toBeTruthy()
+  const tl = store.locked('timeline', 'e1/g1')!
+  const old = { ...(tl.payload as TimelineT), cuts: (tl.payload as TimelineT).cuts.map(c => ({ ...c, present: { characters: c.present.characters, props: c.present.props, view: c.present.view } })) }
+  store.db.prepare('UPDATE artifact SET payload = ? WHERE id = ?').run(JSON.stringify(old), tl.id)
+  expect(() => e.tick(true)).not.toThrow()
 })

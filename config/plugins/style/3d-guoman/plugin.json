@@ -4,7 +4,8 @@
   "name": "3D 国漫",
   "fragments": {
     "writer": "writer.md",
-    "character": "character.md"
+    "character": "character.md",
+    "video": "video.md"
   },
   "imagePrefix": {
     "portrait": "image/character.md",

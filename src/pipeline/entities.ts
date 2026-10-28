@@ -5,7 +5,7 @@ import { image } from '../jobs/images.js'
 import type { Plugin } from '../plugins.js'
 import type { Section } from '../runner.js'
 import type { Artifact, NodeRun, Store } from '../store/store.js'
-import { CARDS, type ScriptT } from '../tasks.js'
+import { CARDS, setupSection, type ScriptT } from '../tasks.js'
 import type { Env, NodeDef, Ready } from './engine.js'
 
 type Roster = ScriptT['roster']
@@ -37,7 +37,7 @@ export function episode(store: Store) {
   const roster = store.locked('roster', EPISODE)
   if (!script || !roster) return undefined
   const beats = (script.payload as Pick<ScriptT, 'scenes'>).scenes.flatMap(scene => scene.beats.map(beat => ({ ...beat, location: scene.location })))
-  return { script, roster: roster.payload as Roster, rosterId: roster.id, beats }
+  return { script, roster: roster.payload as Roster, rosterId: roster.id, beats, scenes: (script.payload as Pick<ScriptT, 'scenes'>).scenes }
 }
 
 export function names(store: Store, kind: Kind): string[] {
@@ -48,7 +48,7 @@ export function names(store: Store, kind: Kind): string[] {
 
 export function fmtBeats(store: Store, ids: string[]) {
   const ep = episode(store)!
-  return ep.beats.filter(b => ids.includes(b.id)).map(b => [`${b.id}（${b.location}，约 ${b.seconds} 秒）${b.action}`, ...b.lines.map(l => `  ${l.speaker}：${l.text}`), ...(b.changes.length ? [`  状态变化：${b.changes.join('；')}`] : [])].join('\n')).join('\n')
+  return ep.beats.filter(b => ids.includes(b.id)).map(b => [`${b.id}（${b.location}，约 ${b.seconds} 秒）${b.action}`, ...b.lines.map(l => `  ${l.speaker}${l.vo ? '（画外音）' : ''}：${l.text}`), ...(b.changes.length ? [`  状态变化：${b.changes.join('；')}`] : [])].join('\n')).join('\n')
 }
 
 /** Props used in the location's beats. */
@@ -90,13 +90,15 @@ const brief: NodeDef = {
     const props = kind === 'loc' ? propsAt(store, name).map(p => scopeOf('prop', p.name)) : []
     const needed = [...before, ...props].map(s => store.latest('entity_brief', s, ['draft', 'locked']))
     if (needed.some(a => !a)) return { ok: false }
-    return { ok: true, inputs: [ep.script.id, ep.rosterId, ...needed.map(a => a!.id)] }
+    // The episode setup is written before the script; a hand-written script (the first M1 sample) has none.
+    const setup = kind === 'loc' ? store.locked('setup', EPISODE) : undefined
+    return { ok: true, inputs: [ep.script.id, ep.rosterId, ...needed.map(a => a!.id), ...(setup ? [setup.id] : [])] }
   },
   async run(env, scope, run, inputs) {
     const { store } = env
     const ep = episode(store)!
     const { kind, name } = parse(scope)
-    const briefs = inputs.slice(2).map(id => store.artifact(id))
+    const briefs = inputs.slice(2).map(id => store.artifact(id)).filter(a => a.kind === 'entity_brief')
     const earlier = briefs.filter(a => parse(a.scope).kind === kind)
     let sections: Section[]
     if (kind === 'char') {
@@ -105,15 +107,18 @@ const brief: NodeDef = {
         { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
         { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
         { title: '和他有关的道具', body: ep.roster.props.filter(p => p.holder.includes(name)).map(p => `${p.name}：${p.holder}`).join('\n') },
-        { title: '同集其他人物', body: earlier.map(a => `${parse(a.scope).name}：${pick(text(a), '主色').replace('主色：', '主色 ')}；${pick(text(a), '区分').replace('区分：', '')}`).join('\n') },
+        { title: '同集其他人物', body: earlier.map(a => `${parse(a.scope).name}：${[pick(text(a), '主色').replace('主色：', '主色 '), pick(text(a), '区分').replace('区分：', ''), pick(text(a), '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`).join('\n') },
       ]
     } else if (kind === 'loc') {
+      // The sections and their wording are the ones the location experiments ran with (src/m0/chain.ts, runs/ab-story).
       const place = ep.roster.locations.find(l => l.name === name)!
-      const props = briefs.filter(a => parse(a.scope).kind === 'prop')
+      const setup = store.locked('setup', EPISODE)
       sections = [
         { title: '地点', body: name },
+        { title: '本集设定里的世界和地点', body: setup ? [setupSection(text(setup), '世界一角'), setupSection(text(setup), '地点')].join('\n\n') : '' },
+        { title: '剧本里这个地点的环境', body: ep.scenes.filter(scene => scene.location === name).map(scene => scene.setting ?? '').join('\n') },
         { title: '在这里发生的剧情', body: fmtBeats(store, place.beats) },
-        { title: '场内的关键道具', body: props.map(a => `${parse(a.scope).name}（${ep.roster.props.find(p => p.name === parse(a.scope).name)!.holder}）\n${text(a)}`).join('\n\n') },
+        { title: '场内的关键道具', body: propsAt(store, name).map(p => `${p.name}：${p.holder}`).join('\n') },
         { title: '已设计的地点', body: earlier.map(a => `${parse(a.scope).name}\n${text(a)}`).join('\n\n') },
       ]
     } else {
@@ -171,7 +176,8 @@ const picture: NodeDef = {
   pool: 'image',
   output: 'entity_image',
   review: 5,
-  images: CANDIDATES,
+  paid: { pool: 'image', count: CANDIDATES },
+  reviseVia: (store, a) => store.locked('entity_desc', a.scope),
   scopes: brief.scopes,
   ready(store, scope): Ready {
     const d = store.locked('entity_desc', scope)
@@ -205,7 +211,7 @@ const derive: NodeDef = {
   pool: 'image',
   output: 'entity_image',
   review: 5,
-  images: 1,
+  paid: { pool: 'image', count: 1 },
   scopes: store => names(store, 'char').flatMap(name => Object.keys(DERIVED).map(d => `${scopeOf('char', name)}/${d}`)),
   ready(store, scope) {
     const { name } = parse(scope)
@@ -216,7 +222,7 @@ const derive: NodeDef = {
     const e = env as EntityEnv
     const { name, derived } = parse(scope)
     const root = e.store.artifact((e.store.artifact(inputs[0]!).payload as { image_id: number }).image_id)
-    return draw(e, scope, run, inputs, DERIVED[derived!], '', [{ label: `${name}的定妆照`, media: root.media_id! }], 1)
+    return draw(e, scope, run, inputs, DERIVED[derived as keyof typeof DERIVED], '', [{ label: `${name}的定妆照`, media: root.media_id! }], 1)
   },
 }
 
