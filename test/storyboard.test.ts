@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImageRequest } from '../src/jobs/images.js'
+import { context } from '../src/m1/web.js'
 import { Engine, type TextRunner } from '../src/pipeline/engine.js'
 import { ENTITY_NODES, type EntityEnv } from '../src/pipeline/entities.js'
 import { STORYBOARD_NODES } from '../src/pipeline/storyboard.js'
@@ -209,6 +210,16 @@ test('cuts worded differently but from the same camera share one view picture; t
   expect(prompt('e1/g1/c2')).toContain('图 3 是封剑洞的侧面。')
   expect(prompt('e1/g2/c2')).toContain('图 2 是封剑洞的侧面。')
   expect(store.latest('keyframe', 'e1/g2/c1')).toBeUndefined()
+
+  // The review shows what has changed by each picture, as its description was told.
+  const told = (n: number) => calls.filter(c => c.task === 'keyframe-desc')[n]!.sections.find(s => s.title === '此刻的状态')!.body
+  const shown = (scope: string) => context(store, store.latest('keyframe', scope)!).find(c => c.title === '此刻的状态')!.body
+  expect(told(2)).toBe('锁链束住双腕\n婚书展开')
+  expect(shown('e1/g2/c2')).toBe('锁链束住双腕\n婚书展开')
+  expect(told(1)).toBe('')
+  expect(shown('e1/g1/c2')).toBe('没有变化，和锁定的图一样')
+  const clip = store.addArtifact({ kind: 'clip_draft', scope: 'e1/g2', payload: {}, created_by: 'model' })
+  expect(context(store, clip)).toEqual([{ title: '这一段开始时的状态', body: '锁链束住双腕\n婚书展开' }])
 })
 
 test('a picture drawn earlier can be adopted for a view without drawing again', async () => {

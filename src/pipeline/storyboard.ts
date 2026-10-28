@@ -97,6 +97,19 @@ function cutAt(store: Store, scope: string) {
   return segment && timeline && cut ? { segment, timeline, cut, id: cutId(segmentId, cutIndex) } : undefined
 }
 
+/** What has changed by the opening of a cut: the script's changes before its segment, then the timeline's before the cut. */
+export function cutState(store: Store, scope: string): string[] | undefined {
+  const at = cutAt(store, scope)
+  if (!at) return undefined
+  return [...stateBefore(store, at.segment.beats[0]!), ...(at.timeline.payload as TimelineT).timeline.filter(e => e.second < at.cut.start).flatMap(e => e.changes)]
+}
+
+/** What has changed by the start of a segment. */
+export function segmentState(store: Store, scope: string): string[] | undefined {
+  const segment = planOf(store)?.plan.segments.find(s => segmentScope(s.id) === scope)
+  return segment && stateBefore(store, segment.beats[0]!)
+}
+
 /**
  * The picture that stands for a person in a cut: the turnaround when the cut shows their back
  * (creator, 2026-10-28: a back view must come from the turnaround), else the portrait.
@@ -321,7 +334,7 @@ const kfdesc: NodeDef = {
     ].map((label, i) => `图 ${i + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', scopeOf('char', name))!), '主色').replace('主色：', '')}`)
     const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', cutLocation(segment, cut)))!), '陈设')
-    const atCut = [...stateBefore(store, segment.beats[0]!), ...tl.timeline.filter(e => e.second < cut.start).flatMap(e => e.changes)]
+    const atCut = cutState(store, scope)!
     const result = await env.text({
       card: CARDS['keyframe-desc']!,
       sections: [

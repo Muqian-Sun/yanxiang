@@ -6,6 +6,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Engine, Gpu } from '../pipeline/engine.js'
+import { cutState, segmentState } from '../pipeline/storyboard.js'
 import type { Artifact, Store } from '../store/store.js'
 import type { Stories } from './storyflow.js'
 import { describePending } from './env.js'
@@ -22,8 +23,10 @@ const STAGES: [string, string][] = [
 /** Yir's 1K medium quotes on 2026-10-22 ranged 0.0067–0.0085 USD; the upper one, for an estimate. */
 const IMAGE_USD = 0.0085
 
-/** What the creator needs beside an artifact to judge it: the design it was drawn from, the description, the timeline. */
-function context(store: Store, a: Artifact): { title: string; body: string }[] {
+const UNCHANGED = '没有变化，和锁定的图一样'
+
+/** What the creator needs beside an artifact to judge it: the design it was drawn from, the description, what has changed by then. */
+export function context(store: Store, a: Artifact): { title: string; body: string }[] {
   const root = a.scope.split('/').slice(0, 3).join('/')
   const text = (kind: string, scope: string) => (store.locked(kind, scope)?.payload as { text?: string } | undefined)?.text
   const out: { title: string; body: string }[] = []
@@ -34,6 +37,12 @@ function context(store: Store, a: Artifact): { title: string; body: string }[] {
   if (a.kind === 'keyframe') {
     const desc = text('keyframe_desc', a.scope)
     if (desc) out.push({ title: '关键帧描述', body: desc })
+    const state = cutState(store, a.scope)
+    if (state) out.push({ title: '此刻的状态', body: state.join('\n') || UNCHANGED })
+  }
+  if (a.kind === 'clip_draft') {
+    const state = segmentState(store, a.scope)
+    if (state) out.push({ title: '这一段开始时的状态', body: state.join('\n') || UNCHANGED })
   }
   return out
 }
