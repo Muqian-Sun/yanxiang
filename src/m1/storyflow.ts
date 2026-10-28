@@ -227,7 +227,7 @@ export class Stories {
       if (round >= FIT_ROUNDS) throw new Error(`剧本拆出来约 ${total} 秒，自动删改 ${FIT_ROUNDS} 次还不在 ${length}；在下面写意见让它改`)
       const target = Math.round((SAMPLE.min + SAMPLE.max) / 2)
       const how = total > SAMPLE.max
-        ? '删掉或合并不推动局面的动作、台词和停顿，保住开场的危机、对手的反制和本集兑现'
+        ? '删掉或合并不推动局面的动作、台词和停顿，保住处境的交代、那件事的来由和结尾的卡点'
         : '补上该有的反应、停顿和过程，不加新的情节和人物'
       s.text = await this.rewrite(s, s.text!, `按拆拍估算，这一版约 ${total} 秒，要落在 ${length}：${how}，改到 ${target} 秒左右。`)
       this.save(s)
