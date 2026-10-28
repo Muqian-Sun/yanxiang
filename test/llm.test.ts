@@ -1,11 +1,28 @@
 import { expect, test } from 'bun:test'
-import { LlmError, streamed } from '../src/llm.js'
+import { join } from 'node:path'
+import { LlmError, loadModels, readKey, streamed } from '../src/llm.js'
 
 /** An event stream cut into the given pieces, the way the gateway hands them over (pieces end mid-line). */
 const sse = (pieces: string[]) => new Response(new ReadableStream({ start(c) { for (const p of pieces) c.enqueue(new TextEncoder().encode(p)); c.close() } }))
 const ev = (data: object) => `event: x\ndata: ${JSON.stringify(data)}\n\n`
 const delta = (text: string) => ev({ type: 'content_block_delta', delta: { type: 'text_delta', text } })
 const end = (stop: string) => ev({ type: 'message_delta', delta: { stop_reason: stop }, usage: { input_tokens: 12, output_tokens: 34 } })
+
+test('a provider key is the named environment variable, with surrounding space ignored', () => {
+  process.env.YX_TEST_TEXT_KEY = '  secret  '
+  expect(readKey('YX_TEST_TEXT_KEY')).toBe('secret')
+  delete process.env.YX_TEST_TEXT_KEY
+  expect(() => readKey('YX_TEST_TEXT_KEY')).toThrow('环境变量 YX_TEST_TEXT_KEY 没有设置')
+  process.env.YX_TEST_TEXT_KEY = '   '
+  expect(() => readKey('YX_TEST_TEXT_KEY')).toThrow('环境变量 YX_TEST_TEXT_KEY 没有设置')
+  delete process.env.YX_TEST_TEXT_KEY
+})
+
+test('the shipped text provider names TEXT_API_KEY', () => {
+  const models = loadModels(join(import.meta.dir, '../config/models.json'))
+  expect(models.providers.qiniu?.keyEnv).toBe('TEXT_API_KEY')
+  expect(models.image?.keyEnv).toBe('IMAGE_API_KEY')
+})
 
 test('a streamed answer hands over everything written so far at each piece', async () => {
   const all = ev({ type: 'message_start', message: { usage: { input_tokens: 0 } } }) + delta('场1 内') + delta(' · 山门') + delta('\n△ 沈烬') + end('end_turn') + ev({ type: 'message_stop' })

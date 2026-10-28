@@ -4,7 +4,7 @@
       "protocol": "anthropic",
       "baseUrl": "https://xapi.qiniu.io",
       "auth": "both",
-      "keyRef": { "service": "manju", "account": "custom-qiniu" }
+      "keyEnv": "TEXT_API_KEY"
     }
   },
   "text": { "provider": "qiniu", "model": "gpt-6.1-sol" },

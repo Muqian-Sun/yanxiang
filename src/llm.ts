@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
@@ -7,7 +6,7 @@ const Provider = z.object({
   protocol: z.enum(['anthropic', 'openai']),
   baseUrl: z.string().url(),
   auth: z.enum(['x-api-key', 'bearer', 'both']),
-  keyRef: z.object({ service: z.string(), account: z.string() }),
+  keyEnv: z.string().min(1),
 })
 const Route = z.object({ provider: z.string(), model: z.string() })
 const Image = z.object({ baseUrl: z.string().url(), model: z.string(), keyEnv: z.string(), maxCostUsd: z.string().regex(/^\d+(\.\d+)?$/) })
@@ -41,10 +40,10 @@ export function resolve(config: ModelsConfig, task: string): Resolved {
   return { name: route.provider, provider, model: route.model }
 }
 
-export function readKey(ref: { service: string; account: string }): string {
-  const result = spawnSync('security', ['find-generic-password', '-s', ref.service, '-a', ref.account, '-w'], { encoding: 'utf8' })
-  const key = result.stdout?.trim()
-  if (result.status !== 0 || !key) throw new LlmError(`钥匙串里没有 ${ref.service}/${ref.account} 的密钥`)
+/** The provider key named by `keyEnv`. Empty and missing are the same failure. */
+export function readKey(keyEnv: string): string {
+  const key = process.env[keyEnv]?.trim()
+  if (!key) throw new LlmError(`环境变量 ${keyEnv} 没有设置，取不到模型密钥`)
   return key
 }
 
@@ -140,7 +139,7 @@ async function once(target: Resolved, key: string, system: string, user: string,
  * streams, and `onText` gets everything written so far; a retry starts again from empty.
  */
 export async function complete(target: Resolved, system: string, user: string, options: { maxTokens?: number; timeoutMs?: number; images?: Picture[]; onText?: (text: string) => void } = {}): Promise<Completion> {
-  const key = readKey(target.provider.keyRef)
+  const key = readKey(target.provider.keyEnv)
   const delays = [2000, 4000, 8000]
   for (let attempt = 0; ; attempt++) {
     try {
