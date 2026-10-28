@@ -72,6 +72,29 @@ describe('plugins', () => {
     expect(files.length).toBeGreaterThan(0)
     for (const name of files) expect(() => assemble(readFileSync(join(dir, name), 'utf8'), pair)).not.toThrow()
   })
+
+  test('script and script-review teach spoken lines without duplicating or undoing the dialogue fragment', () => {
+    const { plugins, errors } = loadPlugins(join(ROOT, 'config/plugins'))
+    expect(errors).toEqual([])
+    const pair = { style: plugins.get('style:3d-guoman')!, genre: plugins.get('genre:xianxia')! }
+    const script = assemble(readFileSync(join(ROOT, 'config/prompts/tasks/script.md'), 'utf8'), pair).text
+    const review = assemble(readFileSync(join(ROOT, 'config/prompts/tasks/script-review.md'), 'utf8'), pair).text
+    const count = (hay: string, needle: string) => hay.split(needle).length - 1
+    // Dialogue craft is owned by the genre fragment; the task prompts must not paste it twice.
+    expect(count(script, '半文半白、听得懂')).toBe(1)
+    expect(count(review, '半文半白、听得懂')).toBe(1)
+    expect(count(script, '一口气超过约二十字就拆开')).toBe(1)
+    expect(script).toContain('话说全')
+    expect(script).toContain('不靠人物把前因后果讲给观众听')
+    expect(script).toContain('文书腔')
+    expect(script).toContain('规则怎么运作不靠台词讲')
+    expect(script).toContain('这是剧本行，不是小说')
+    expect(script).not.toContain('三番两次的躲了过去')
+    expect(review).toContain('不像人话')
+    expect(review).toContain('话说不全')
+    expect(review).toContain('讲设定')
+    expect(review).toContain('不要因为半文半白或去现代词，就把「不像人话」「话说不全」放过去')
+  })
 })
 
 test('userMessage drops empty sections', () => {
