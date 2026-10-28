@@ -52,7 +52,7 @@ const TL1: TimelineT = {
     cut(1, 0, 5, '封剑洞内主视角，正对石台', ['谢无咎'], ['石台']),
     cut(2, 5, 10, '从石台侧面看向洞口', ['谢无咎', '柳含烟'], ['婚书']),
   ],
-  timeline: Array.from({ length: 10 }, (_, second) => ({ second, text: `第${second}秒`, changes: second === 5 ? ['婚书展开'] : [] })),
+  timeline: Array.from({ length: 10 }, (_, second) => ({ from: second, to: second + 1, text: `第${second}秒`, changes: second === 5 ? ['婚书展开'] : [] })),
   lines: [{ speaker: '柳含烟', text: '签字。', start: 6, end: 8 }],
   ambience: '洞风',
   fight: false,
@@ -64,7 +64,7 @@ const TL2: TimelineT = {
     cut(1, 0, 2, '沿用上一段机位', ['谢无咎', '柳含烟'], []),
     cut(2, 2, 4, '石台侧面，越过谢无咎肩头看向洞口', ['柳含烟'], ['婚书']),
   ],
-  timeline: Array.from({ length: 4 }, (_, second) => ({ second, text: `续${second}`, changes: [] })),
+  timeline: Array.from({ length: 4 }, (_, second) => ({ from: second, to: second + 1, text: `续${second}`, changes: [] })),
   lines: [],
   ambience: '洞风',
   fight: false,
@@ -199,7 +199,7 @@ test('plan waits for every root entity lock, then timelines follow; a continues 
   await round(e)
   expect(store.locked('timeline', 'e1/g2')).toBeTruthy()
   const g2 = calls.find(c => c.task === 'timeline' && c.sections[0]!.body.startsWith('g2'))!
-  expect(g2.sections.find(s => s.title === '上一段最后一个镜头')!.body).toContain('最后一秒：第9秒')
+  expect(g2.sections.find(s => s.title === '上一段最后一个镜头')!.body).toContain('最后几秒：第9秒')
   expect(g2.sections.find(s => s.title === '这一段开始时的状态')!.body).toContain('锁链束住双腕')
   expect(g2.sections.find(s => s.title === '这一段开始时的状态')!.body).toContain('婚书展开')
   expect(g2.sections.find(s => s.title === '站位')!.body).toContain('这一段开始时：\n谢无咎：石台前，站着，背对镜头\n柳含烟：石台前，站着，背对镜头\n这一段里：\n没有人换位置')

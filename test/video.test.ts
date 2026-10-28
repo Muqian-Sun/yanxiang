@@ -31,7 +31,7 @@ const cutOf = (index: number, start: number, end: number, characters: string[], 
 const TL: TimelineT = {
   seconds: 8,
   cuts: [cutOf(1, 0, 4, ['谢无咎'], ['石台']), cutOf(2, 4, 8, ['谢无咎', '柳含烟'], ['婚书'])],
-  timeline: Array.from({ length: 8 }, (_, s) => ({ second: s, text: s === 5 ? '柳含烟把婚书推到谢无咎面前' : `第${s}秒谢无咎不动`, changes: [] })),
+  timeline: Array.from({ length: 8 }, (_, s) => ({ from: s, to: s + 1, text: s === 5 ? '柳含烟把婚书推到谢无咎面前' : `第${s}秒谢无咎不动`, changes: [] })),
   lines: [{ speaker: '柳含烟', text: '签字', start: 5, end: 6 }, { speaker: '谢无咎', text: '不签。', start: 7, end: 8 }],
   ambience: '洞风低鸣。',
   fight: false,
@@ -63,6 +63,16 @@ test('the compiled prompt has H3\'s six sections, binds every mention, and quiet
   expect(p).toContain('overall_soundscape:\n洞风低鸣。除了台词，没有别的人声。')
   expect(p.endsWith('non_diegetic_music:\n无')).toBe(true)
   expect(compile({ style: '', summary: '', timeline: { ...TL, fight: true }, bound: BOUND, voices: [], voiceOver: [], states: [], continues: false, trigger: 'wushu_action,' }).startsWith('wushu_action,\n\nsubject_definitions:')).toBe(true)
+})
+
+test('each shot goes into the prompt as one line over its seconds, with the lines spoken within it', () => {
+  const byShot: TimelineT = { ...TL, timeline: [
+    { from: 0, to: 4, text: '谢无咎跪着不动，锁链轻晃', changes: [] },
+    { from: 4, to: 8, text: '柳含烟把婚书推到谢无咎面前，谢无咎垂眼', changes: [] },
+  ] }
+  const p = compile({ style: '', summary: '', timeline: byShot, bound: BOUND, voices: [], voiceOver: [], states: [], continues: false })
+  expect(p).toContain('第 0–4 秒：谢无咎（<Picture 2>）跪着不动，锁链轻晃\n')
+  expect(p).toMatch(/第 4–8 秒：柳含烟（<Picture 3>）把婚书（<Picture 4>）推到谢无咎（<Picture 2>）面前，谢无咎（<Picture 2>）垂眼 柳含烟（<Picture 3>）（S1）说：<d>\[Chinese\] 签字。<\/d>（第 5 秒到第 6 秒）.* 谢无咎（<Picture 2>）（S2）说：<d>\[Chinese\] 不签。<\/d>/)
 })
 
 test('a flat lay binds only the clothes of a group; a later costume is named with its person', () => {
@@ -222,8 +232,8 @@ const ROSTER = {
 }
 const PLAN: PlanT = { segments: [{ id: 'g1', beats: ['b1', 'b2'], seconds: 10, location: '封剑洞', continues: false, summary: '逼签' }, { id: 'g2', beats: ['b3'], seconds: 4, location: '封剑洞', continues: true, summary: '僵持' }], overflow: [] }
 const cut = (index: number, start: number, end: number, view: string, characters: string[], props: string[]): TimelineT['cuts'][number] => ({ index, start, end, camera: '固定', shot: '中景', present: { characters, backs: [], props, view } })
-const TL1: TimelineT = { seconds: 10, cuts: [cut(1, 0, 5, '主视角', ['谢无咎'], ['石台']), { ...cut(2, 5, 10, '主视角', ['谢无咎', '柳含烟'], ['婚书']), present: { characters: ['谢无咎', '柳含烟'], backs: ['谢无咎'], props: ['婚书'], view: '主视角' } }], timeline: Array.from({ length: 10 }, (_, s) => ({ second: s, text: `第${s}秒`, changes: [] })), lines: [{ speaker: '柳含烟', text: '签字。', start: 6, end: 8 }], ambience: '洞风', fight: false }
-const TL2: TimelineT = { seconds: 4, cuts: [cut(1, 0, 2, '沿用', ['谢无咎', '柳含烟'], []), cut(2, 2, 4, '主视角', ['柳含烟'], ['婚书'])], timeline: Array.from({ length: 4 }, (_, s) => ({ second: s, text: `续${s}`, changes: [] })), lines: [], ambience: '洞风', fight: true }
+const TL1: TimelineT = { seconds: 10, cuts: [cut(1, 0, 5, '主视角', ['谢无咎'], ['石台']), { ...cut(2, 5, 10, '主视角', ['谢无咎', '柳含烟'], ['婚书']), present: { characters: ['谢无咎', '柳含烟'], backs: ['谢无咎'], props: ['婚书'], view: '主视角' } }], timeline: Array.from({ length: 10 }, (_, s) => ({ from: s, to: s + 1, text: `第${s}秒`, changes: [] })), lines: [{ speaker: '柳含烟', text: '签字。', start: 6, end: 8 }], ambience: '洞风', fight: false }
+const TL2: TimelineT = { seconds: 4, cuts: [cut(1, 0, 2, '沿用', ['谢无咎', '柳含烟'], []), cut(2, 2, 4, '主视角', ['柳含烟'], ['婚书'])], timeline: Array.from({ length: 4 }, (_, s) => ({ from: s, to: s + 1, text: `续${s}`, changes: [] })), lines: [], ambience: '洞风', fight: true }
 
 function chainProject() {
   const store = new Store(mkdtempSync(join(tmpdir(), 'yx-chain-')))

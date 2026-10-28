@@ -569,6 +569,8 @@ document.addEventListener('keydown', e => {
 })
 
 // ---------- timeline ----------
+// A timeline's entries as stretches of seconds; one stored before 2026-10-28 has an entry per second (momentsOf in tasks.ts).
+const moments = t => t.timeline.map(e => e.second !== undefined ? { from: e.second, to: e.second + 1, text: e.text, changes: e.changes } : e)
 function tlTable(t, id, playable) {
   if (!t) return ''
   let rows = ''
@@ -576,23 +578,24 @@ function tlTable(t, id, playable) {
     const tags = (c.present && c.present.backs && c.present.backs.length ? '<span class="tag blue">背影：' + esc(c.present.backs.join('、')) + '</span>' : '') + (c.location ? '<span class="tag">' + esc(c.location) + '</span>' : '')
     rows += '<div class="cut"><div class="cut-h"><b>第 ' + c.index + ' 镜</b><span class="t">' + c.start + '–' + c.end + ' 秒</span>' + tags + '</div>' +
       (c.camera ? '<div class="cam">' + esc(c.camera) + '</div>' : '') + '<div class="shot">' + esc(c.shot) + '</div></div>'
-    for (const e of t.timeline.filter(e => e.second >= c.start && e.second < c.end)) {
-      const lines = t.lines.filter(l => Math.floor(l.start) === e.second).map(l => '<span class="line">' + esc(l.speaker) + '：' + esc(l.text) + '</span>').join('')
-      const inner = '<span class="t">' + e.second + 's</span><span>' + esc(e.text) + lines + '</span>'
+    for (const m of moments(t).filter(m => m.from >= c.start && m.from < c.end)) {
+      const lines = t.lines.filter(l => l.start >= m.from && l.start < m.to).map(l => '<span class="line">' + esc(l.speaker) + '：' + esc(l.text) + '</span>').join('')
+      const inner = '<span class="t">' + (m.to - m.from > 1 ? m.from + '–' + m.to : m.from) + 's</span><span>' + esc(m.text) + lines + '</span>'
+      const at = ' data-from="' + m.from + '" data-to="' + m.to + '"'
       rows += playable
-        ? '<button type="button" class="sec" data-t="' + e.second + '" onclick="seek(\'' + id + '\',' + e.second + ')">' + inner + '</button>'
-        : '<div class="sec" data-t="' + e.second + '">' + inner + '</div>'
+        ? '<button type="button" class="sec"' + at + ' onclick="seek(\'' + id + '\',' + m.from + ')">' + inner + '</button>'
+        : '<div class="sec"' + at + '>' + inner + '</div>'
     }
   }
-  return '<div class="tl" id="tl' + id + '"' + (playable ? ' role="group" aria-label="逐秒时间轴，点一行跳到那一秒"' : '') + '>' + rows + '</div>'
+  return '<div class="tl" id="tl' + id + '"' + (playable ? ' role="group" aria-label="时间轴，点一行跳到那个镜头的开头"' : '') + '>' + rows + '</div>'
 }
 function seek(id, t) { const v = document.getElementById('v' + id); if (v) { v.currentTime = t; v.play() } }
 document.addEventListener('timeupdate', e => {
   const v = e.target; if (!v.id || !v.id.startsWith('v')) return
-  const id = v.id.slice(1), s = Math.floor(v.currentTime)
+  const id = v.id.slice(1), s = v.currentTime
   const box = document.getElementById('tl' + id); if (!box) return
   box.querySelectorAll('.sec.now').forEach(x => x.classList.remove('now'))
-  const row = box.querySelector('.sec[data-t="' + s + '"]'); if (row) { row.classList.add('now'); if (!v.paused) row.scrollIntoView({ block: 'nearest' }) }
+  const row = [...box.querySelectorAll('.sec')].find(x => +x.dataset.from <= s && s < +x.dataset.to); if (row) { row.classList.add('now'); if (!v.paused) row.scrollIntoView({ block: 'nearest' }) }
 }, true)
 
 // ---------- reviews ----------

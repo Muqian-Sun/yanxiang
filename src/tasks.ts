@@ -202,13 +202,20 @@ export const Timeline = z.object({
   cuts: z.array(z.object({ index: z.number().int(), start: z.number(), end: z.number(), camera: z.string().min(1), shot: z.string().min(1), present: z.object({ characters: z.array(z.string()), backs: z.array(z.string()).default([]), props: z.array(z.string()), view: z.string().min(1) }),
     /** Where this shot is, when the segment crosses locations; otherwise the segment's own. */
     location: z.preprocess(v => (typeof v === 'string' && !v.trim() ? undefined : v), z.string().optional()) })).min(1),
-  timeline: z.array(z.object({ second: z.number().int(), text: z.string().min(1), changes: z.array(z.string()) })),
+  /** What happens, one entry a shot from its start to its end (creator, 2026-10-28: not one entry a second, 「就是一个完整镜头的时长」). */
+  timeline: z.array(z.object({ from: z.number(), to: z.number(), text: z.string().min(1), changes: z.array(z.string()) })),
   lines: z.array(z.object({ speaker: z.string(), text: z.string(), start: z.number(), end: z.number() })),
   ambience: z.string(),
   /** A fight or chase: the video gets the martial-arts motion LoRA (design 07 二). */
   fight: z.boolean().default(false),
 })
 export type TimelineT = z.infer<typeof Timeline>
+export type Moment = TimelineT['timeline'][number]
+
+/** A timeline's entries as stretches of seconds; one stored before 2026-10-28 has an entry per second, read as one second each. */
+export function momentsOf(timeline: TimelineT): Moment[] {
+  return (timeline.timeline as (Moment | { second: number; text: string; changes: string[] })[]).map(e => ('second' in e ? { from: e.second, to: e.second + 1, text: e.text, changes: e.changes } : e))
+}
 export const MAIN_VIEW = '主视角'
 export const ViewGroups = z.object({
   views: z.array(z.object({ name: z.string().min(1).max(12), camera: z.string(), cuts: z.array(z.string()).min(1) })).min(1),
@@ -434,10 +441,10 @@ export const CARDS: Record<string, Card> = {
     checks: (out, data) => {
       const problems: Problems = []
       if (out.seconds !== data.seconds) problems.push(`seconds 是 ${out.seconds}，这一段是 ${data.seconds} 秒`)
-      const seconds = out.timeline.map(entry => entry.second)
-      const expected = Array.from({ length: data.seconds }, (_, i) => i)
-      if (seconds.join(',') !== expected.join(',')) problems.push(`timeline 要从第 0 秒到第 ${data.seconds - 1} 秒每秒一项`)
       const cuts = [...out.cuts].sort((a, b) => a.start - b.start)
+      const written = out.timeline.map(m => `${m.from}–${m.to}`).join('、')
+      const shots = cuts.map(cut => `${cut.start}–${cut.end}`).join('、')
+      if (written !== shots) problems.push(`timeline 每个镜头写一项，按镜头顺序，from、to 照抄这个镜头的 start、end：镜头是 ${shots}，timeline 写的是 ${written || '（空）'}`)
       const seams = [
         ...(cuts[0]?.start !== 0 ? [`第一个镜头的 start 是 ${cuts[0]?.start}，要是 0`] : []),
         ...cuts.slice(1).flatMap((cut, i) => (cut.start !== cuts[i]!.end ? [`第 ${cuts[i]!.index} 个镜头的 end 是 ${cuts[i]!.end}、第 ${cut.index} 个的 start 是 ${cut.start}，两个要相等`] : [])),

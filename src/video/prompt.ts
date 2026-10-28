@@ -3,7 +3,7 @@
  * Ref2VA sections. Section names and reference labels are H3's own; the body is Chinese,
  * dialogue verbatim from the script.
  */
-import type { TimelineT } from '../tasks.js'
+import { momentsOf, type TimelineT } from '../tasks.js'
 import { MAX_AUDIOS, MAX_IMAGES } from './workflow.js'
 
 export type Bound =
@@ -92,8 +92,8 @@ export function compile(p: SegmentPrompt): string {
     const head = cut.index === 1 ? '[Shot 1]' : `[Shot ${cut.index}] At ${clock(cut.start)}，切到第 ${cut.index} 个镜头。`
     const kf = keyframeOf(cut.index)
     const opening = kf ? `这一切从 ${pictures.get(kf)} 开始。` : cut.index === 1 && p.continues ? '这一切接着上一段最后的画面，机位、景别和人物左右位置不变。' : ''
-    const seconds = p.timeline.timeline.filter(e => e.second >= cut.start && e.second < cut.end).map(e => {
-      const lines = p.timeline.lines.filter(l => Math.floor(l.start) === e.second).map(l => {
+    const moments = momentsOf(p.timeline).filter(m => m.from >= cut.start && m.from < cut.end).map(m => {
+      const lines = p.timeline.lines.filter(l => l.start >= m.from && l.start < m.to).map(l => {
         const vo = p.voiceOver.includes(`${l.speaker}：${l.text}`)
         const others = cut.present.characters.filter(n => n !== l.speaker)
         const quiet = others.length ? `${others.map(tag).join('、')}不说话，嘴唇闭合。` : ''
@@ -102,9 +102,9 @@ export function compile(p: SegmentPrompt): string {
           ? `${l.speaker}（${sid(l.speaker)}）画外音说：<d>[Chinese] ${said(l.text)}</d>${when}画面里${cut.present.characters.includes(l.speaker) ? `${tag(l.speaker)}嘴唇闭合，` : ''}没有人张嘴。${quiet}`
           : `${tag(l.speaker)}（${sid(l.speaker)}）说：<d>[Chinese] ${said(l.text)}</d>${when}只说一次，说完闭嘴。${quiet}`
       })
-      return `第 ${e.second} 秒：${tag(e.text)}${lines.length ? ` ${lines.join(' ')}` : ''}`
+      return `第 ${m.to - m.from > 1 ? `${m.from}–${m.to}` : m.from} 秒：${tag(m.text)}${lines.length ? ` ${lines.join(' ')}` : ''}`
     })
-    return [`${head} ${opening}镜头：${tag(cut.shot)}。运镜：${cut.camera}。`, ...seconds].join('\n')
+    return [`${head} ${opening}镜头：${tag(cut.shot)}。运镜：${cut.camera}。`, ...moments].join('\n')
   })
 
   return [

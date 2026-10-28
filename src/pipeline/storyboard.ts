@@ -2,7 +2,7 @@ import { imagePrompt } from '../compose.js'
 import { image } from '../jobs/images.js'
 import type { Section } from '../runner.js'
 import type { Artifact, Store } from '../store/store.js'
-import { CARDS, costumeChanges, MAIN_VIEW, voicedPerBeat, type BlockingData, type BlockingT, type PlanData, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
+import { CARDS, costumeChanges, MAIN_VIEW, momentsOf, voicedPerBeat, type BlockingData, type BlockingT, type PlanData, type PlanT, type TimelineT, type ViewGroupsT } from '../tasks.js'
 import type { NodeDef, Ready } from './engine.js'
 import {
   EPISODE, episode, figureAt, fmtBeats, imageParams, lockedImage, lookAt, names, pick, revision, scopeOf, styleRefMedia, text,
@@ -122,7 +122,7 @@ const layout = (brief: string) => ['格局', '陈设', '道具位置', '门窗�
 
 function lastCutBlurb(tl: TimelineT): string {
   const cut = tl.cuts.at(-1)!
-  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后一秒：${tl.timeline.at(-1)?.text ?? ''}\n底声：${tl.ambience}`
+  return `运镜：${cut.camera}\n镜头：${cut.shot}\n最后几秒：${momentsOf(tl).at(-1)?.text ?? ''}\n底声：${tl.ambience}`
 }
 
 function rootLocks(store: Store): number[] | undefined {
@@ -158,7 +158,7 @@ function cutAt(store: Store, scope: string) {
 export function cutState(store: Store, scope: string): string[] | undefined {
   const at = cutAt(store, scope)
   if (!at) return undefined
-  return [...stateBefore(store, at.segment.beats[0]!), ...(at.timeline.payload as TimelineT).timeline.filter(e => e.second < at.cut.start).flatMap(e => e.changes)]
+  return [...stateBefore(store, at.segment.beats[0]!), ...momentsOf(at.timeline.payload as TimelineT).filter(m => m.to <= at.cut.start).flatMap(m => m.changes)]
 }
 
 /** What has changed by the start of a segment. */
@@ -456,7 +456,7 @@ const kfdesc: NodeDef = {
     const { store } = env
     const { segment, timeline, cut, id } = cutAt(store, scope)!
     const tl = timeline.payload as TimelineT
-    const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
+    const second = momentsOf(tl).find(m => m.from <= cut.start && cut.start < m.to)
     const refs = keyframeLabels(store, scope).map((label, i) => `图 ${i + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', lookAt(store, name, segment.beats[0]!))!), '主色').replace('主色：', '')}`)
     const location = cutLocation(segment, cut)
@@ -465,7 +465,7 @@ const kfdesc: NodeDef = {
     const result = await env.text({
       card: CARDS['keyframe-desc']!,
       sections: [
-        { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
+        { title: '这一秒', body: `第 ${cut.start} 秒，第 ${cut.index} 个镜头的开头。\n画面：${second && second.to - second.from > 1 ? `（这个镜头第 ${second.from}–${second.to} 秒的全部内容，关键帧只取开头这一刻）` : ''}${second?.text ?? ''}\n镜头：${cut.shot}\n运镜：${cut.camera}` },
         { title: '参考图', body: refs.join('\n') },
         { title: '人物主色', body: colors.join('\n') },
         { title: '这个视角', body: viewText(store, location, id) },
