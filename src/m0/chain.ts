@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { loadModels } from '../llm.js'
 import { loadPlugins } from '../plugins.js'
 import { runTask, TaskFailed, type RunResult, type Section } from '../runner.js'
-import { CARDS, screenplay, setupSection, voicedPerBeat, type CharacterData, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
+import { CARDS, costumeChanges, screenplay, setupSection, voicedPerBeat, type CharacterData, type PlanData, type PlanT, type ScriptT, type TimelineT } from '../tasks.js'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const idea = process.argv[2]
@@ -157,11 +157,13 @@ await pool(4, [...designs.entries()].map(([key, text]) => async () => {
 
 // 5. 分段
 const names = [...script.roster.characters.map(c => c.name), ...script.roster.locations.map(l => l.name), ...script.roster.props.map(p => p.name)]
+const changes = costumeChanges(script.roster)
 const plan = await call<PlanT>('segment-plan', 'segment-plan', [
   { title: '剧本', body: beats.map(fmtBeat).join('\n') },
   { title: '已定的人物、地点、道具', body: names.join('、') },
+  { title: '换装', body: changes.map(c => `${c.name}从 ${c.from} 起换上${c.costume}`).join('\n') },
   { title: '单集时长', body: `${MIN}–${MAX} 秒` },
-], { beats: beats.map(b => b.id), voiced: voicedPerBeat(beats), min: MIN, max: MAX, locations: script.roster.locations.map(l => l.name) })
+], { beats: beats.map(b => b.id), voiced: voicedPerBeat(beats), min: MIN, max: MAX, locations: script.roster.locations.map(l => l.name), changes } satisfies PlanData)
 if (!plan) process.exit(1)
 
 // 6. 段时间轴：承接段要看上一段的最后一个镜头，所以一串承接段按顺序写，不同串之间并行

@@ -14,7 +14,8 @@
     "prop-sheet": "image/prop.md",
     "location": "image/scene.md",
     "location-view": "image/scene.md",
-    "keyframe": "image/keyframe.md"
+    "keyframe": "image/keyframe.md",
+    "outfit": "image/prop.md"
   },
   "styleRef": "style-ref.png"
 }

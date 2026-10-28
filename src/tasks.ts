@@ -147,7 +147,13 @@ export const Script = z.object({
   /** `setting` is the paragraph under the scene's heading in the written screenplay; a hand-written script (M1) has none. */
   scenes: z.array(z.object({ id: z.string(), location: z.string().min(1), setting: z.string().optional(), beats: z.array(Beat).min(1) })).min(1),
   roster: z.object({
-    characters: z.array(z.object({ name: z.string().min(1), gender: z.string(), age_look: z.string(), rank: z.string(), tier: z.string(), needs: z.string(), temperament: z.string(), appearance_lines: z.array(z.string()) })).min(1),
+    characters: z.array(z.object({
+      name: z.string().min(1), gender: z.string(), age_look: z.string(), rank: z.string(), tier: z.string(), needs: z.string(), temperament: z.string(), appearance_lines: z.array(z.string()),
+      /** How many people the name stands for (two guards); they share one costume. */
+      count: z.number().int().positive().default(1),
+      /** Costumes changed into after the opening one, in order, each from the beat it is first worn in. */
+      costumes: z.array(z.object({ name: z.string().min(1), from: z.string().min(1) })).default([]),
+    })).min(1),
     locations: z.array(z.object({ name: z.string().min(1), beats: z.array(z.string()) })).min(1),
     props: z.array(z.object({ name: z.string().min(1), holder: z.string(), beats: z.array(z.string()) })),
   }),
@@ -191,7 +197,7 @@ export type ScriptData = { min: number; max: number }
 /** What the program read from the written screenplay; the extraction must keep every line and scene of it. */
 export type ExtractData = ScriptData & { lines: ScreenplayLine[]; locations: string[] }
 /** `voiced`: spoken characters per beat (punctuation left out), dialogue and voice-over alike. */
-export type PlanData = { beats: string[]; voiced: Record<string, number>; min: number; max: number; locations: string[] }
+export type PlanData = { beats: string[]; voiced: Record<string, number>; min: number; max: number; locations: string[]; changes: { name: string; costume: string; from: string }[] }
 
 /** H3 spoke about 4.1 Chinese characters a second in our samples (经验审核 05-18); one more second for the start and the end follows Toonflow's margin and is a guess. */
 export const SPEECH_RATE = 4.1
@@ -227,7 +233,22 @@ export function scriptProblems(out: ScriptT, data: ScriptData): Problems {
   if (strangers.length) problems.push(`这些说话人不在人物清单里：${strangers.join('、')}`)
   const blank = out.roster.characters.filter(c => !c.gender.trim() || !c.age_look.trim()).map(c => c.name)
   if (blank.length) problems.push(`这些人物没写性别或外观年龄：${blank.join('、')}；剧本没写明的，按身份和称呼推一个，例如「看起来二十出头」`)
+  for (const person of out.roster.characters) {
+    const costumes = person.costumes
+    const at = costumes.map(c => ids.indexOf(c.from))
+    const unknown = costumes.filter((_, i) => at[i]! < 0).map(c => `${c.name}（${c.from}）`)
+    if (unknown.length) problems.push(`${person.name}的换装写了剧本里没有的拍：${unknown.join('、')}；from 写他第一次穿这套的那一拍的 id`)
+    else if (at.some((x, i) => i > 0 && x <= at[i - 1]!)) problems.push(`${person.name}的换装要按穿上的先后排，from 一个比一个靠后`)
+    const costumeNames = costumes.map(c => c.name)
+    const bad = costumeNames.filter((n, i) => n.includes('/') || costumeNames.indexOf(n) !== i)
+    if (bad.length) problems.push(`${person.name}的造型名重复或带「/」：${[...new Set(bad)].join('、')}`)
+  }
   return problems
+}
+
+/** Where someone changes costume: the beat a segment must start at (design 04, creator 2026-10-28). Rosters stored before then have no costumes. */
+export function costumeChanges(roster: ScriptT['roster']): PlanData['changes'] {
+  return roster.characters.flatMap(person => (person.costumes ?? []).map(c => ({ name: person.name, costume: c.name, from: c.from })))
 }
 
 const card = <Out, Data>(c: Omit<Card, 'checks'> & { checks?: (out: Out, data: Data) => Problems }): Card => c as Card
@@ -292,6 +313,11 @@ export const CARDS: Record<string, Card> = {
       }
       const strange = [...new Set(out.segments.map(segment => segment.location).filter(location => !data.locations.includes(location)))]
       if (strange.length) problems.push(`这些地点不在出场清单里：${strange.join('、')}；location 只能写清单里的地点名：${data.locations.join('、')}`)
+      // A segment's pictures are bound once for the whole segment, so a costume change must open one.
+      for (const change of data.changes) {
+        const segment = out.segments.find(s => s.beats.includes(change.from))
+        if (segment && segment.beats[0] !== change.from) problems.push(`${segment.id} 跨过了换装：${change.name}从 ${change.from} 起换上${change.costume}，${change.from} 要作为一段的第一拍`)
+      }
       return problems
     },
   }),

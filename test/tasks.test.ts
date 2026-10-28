@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
 import { CARDS } from '../src/tasks.js'
 
-const check = (name: string, out: unknown, data?: unknown) => CARDS[name]!.checks!(out as never, data as never)
+/** A structured output that parses is checked with its defaults filled, as the runner does; one that does not is checked as it is. */
+const check = (name: string, out: unknown, data?: unknown) => {
+  const parsed = CARDS[name]!.schema?.safeParse(out)
+  return CARDS[name]!.checks!((parsed?.success ? parsed.data : out) as never, data as never)
+}
 
 test('a description that writes the background is sent back', () => {
   expect(check('portrait-desc', '她站在浅灰背景前，长发及腰。')).toHaveLength(1)
@@ -36,7 +40,7 @@ const timeline = (lines: { speaker: string; text: string; start: number; end: nu
 })
 
 test('a timeline that changes a word of the dialogue is sent back', () => {
-  const data = { seconds: 4, lines: [{ speaker: '沈照雪', text: '祖师在上。' }], characters: ['沈照雪'], props: [], locations: ['石殿'] }
+  const data = { seconds: 4, lines: [{ speaker: '沈照雪', text: '祖师在上。' }], characters: ['沈照雪'], props: [], locations: ['石殿'], changes: [] }
   expect(check('timeline', timeline([{ speaker: '沈照雪', text: '祖师在上。', start: 1, end: 3 }]), data)).toEqual([])
   expect(check('timeline', timeline([{ speaker: '沈照雪', text: '祖师在上！', start: 1, end: 3 }]), data)).toHaveLength(2)
 })
@@ -50,14 +54,14 @@ test('a timeline that annotates a name in present is sent back, since the keyfra
 })
 
 test('a plan that leaves a beat out is sent back', () => {
-  const data = { beats: ['b1', 'b2'], voiced: {}, min: 96, max: 144, locations: ['石殿'] }
+  const data = { beats: ['b1', 'b2'], voiced: {}, min: 96, max: 144, locations: ['石殿'], changes: [] }
   const plan = (beats: string[]) => ({ segments: [{ id: 'g1', beats, seconds: 8, location: '石殿', continues: false, summary: '开场' }], overflow: [] })
   expect(check('segment-plan', plan(['b1', 'b2']), data)).toEqual([])
   expect(check('segment-plan', plan(['b1']), data)).toEqual(['这些拍没有落进任何一段：b2'])
 })
 
 test('a plan that names a location outside the roster is sent back', () => {
-  const data = { beats: ['b1'], voiced: {}, min: 96, max: 144, locations: ['封剑洞外'] }
+  const data = { beats: ['b1'], voiced: {}, min: 96, max: 144, locations: ['封剑洞外'], changes: [] }
   const plan = (location: string) => ({ segments: [{ id: 'g1', beats: ['b1'], seconds: 8, location, continues: false, summary: '回望' }], overflow: [] })
   expect(check('segment-plan', plan('封剑洞外'), data)).toEqual([])
   expect(check('segment-plan', plan('封剑洞外（望向洞内石台）'), data)).toHaveLength(1)

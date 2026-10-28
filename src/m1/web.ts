@@ -6,6 +6,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Engine, Gpu } from '../pipeline/engine.js'
+import { designScope } from '../pipeline/entities.js'
 import { cutState, segmentState } from '../pipeline/storyboard.js'
 import type { Artifact, Store } from '../store/store.js'
 import type { Stories } from './storyflow.js'
@@ -16,7 +17,7 @@ import { SAMPLE } from './spec.js'
 const POINTS: Record<number, string> = { 2: '故事方向', 3: '剧本', 4: '外观设计', 5: '定妆照与试音', 6: '机位图与关键帧', 7: '草稿', 8: '整集草稿', 9: '交付片' }
 /** Nodes in pipeline order, as the progress page shows them. */
 const STAGES: [string, string][] = [
-  ['brief', '外观设计'], ['desc', '定妆描述'], ['image', '定妆照'], ['derive', '三视图与特写'], ['plan', '分段'], ['timeline', '时间轴'],
+  ['brief', '外观设计'], ['desc', '定妆描述'], ['image', '定妆照'], ['derive', '三视图、特写与服装平铺'], ['plan', '分段'], ['timeline', '时间轴'],
   ['views', '机位分组'], ['view', '机位图'], ['kfdesc', '关键帧描述'], ['keyframe', '关键帧'], ['audition', '试音'], ['voice', '音色'],
   ['draft', '草稿'], ['trim', '裁头尾'], ['cut_draft', '整集草稿'], ['refine', '精修'], ['cut_final', '交付片'],
 ]
@@ -27,11 +28,10 @@ const UNCHANGED = '没有变化，和锁定的图一样'
 
 /** What the creator needs beside an artifact to judge it: the design it was drawn from, the description, what has changed by then. */
 export function context(store: Store, a: Artifact): { title: string; body: string }[] {
-  const root = a.scope.split('/').slice(0, 3).join('/')
   const text = (kind: string, scope: string) => (store.locked(kind, scope)?.payload as { text?: string } | undefined)?.text
   const out: { title: string; body: string }[] = []
   if (a.kind === 'entity_image') {
-    const brief = text('entity_brief', root)
+    const brief = text('entity_brief', designScope(a.scope))
     if (brief) out.push({ title: '外观要点', body: brief })
   }
   if (a.kind === 'keyframe') {
