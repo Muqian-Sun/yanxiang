@@ -42,6 +42,52 @@ test('two submits with the same reference at once upload it once', async () => {
   expect(count).toEqual({ files: 1, puts: 1 })
 })
 
+test('a stored 503 on the content key is sent again with a new key, and that file is kept', async () => {
+  const keys: string[] = []
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+    if (url.endsWith('/v1/models?include=parameters')) return json({ models: [{ id: 'm', operations: [{ operation: 'generate_image', parameters: [{ name: 'n', values: [1] }], input_constraints: { image: { max_references: 16 } } }] }] })
+    if (url.endsWith('/v1/files') && init?.method === 'POST') {
+      keys.push(new Headers(init.headers).get('idempotency-key') ?? '')
+      if (keys.length === 1) return json({ error: { code: 'YIR_TEMPORARILY_UNAVAILABLE', message: 'The file service is temporarily unavailable.', retryable: true } }, 503)
+      return json({ files: [{ id: 'f2', status: 'ready' }] })
+    }
+    if (url.endsWith('/v1/files/f2')) return json({ status: 'ready' })
+    if (url.endsWith('/v1/images/quotes')) return json({ supply: { available: true }, expected_amount: '0.008' })
+    if (url.endsWith('/v1/images/generations')) return json({ id: 'job-1' })
+    throw new Error(`unexpected ${url}`)
+  }) as typeof fetch
+  process.env.YX_TEST_KEY = 'k'
+  const client = yir({ baseUrl: 'https://yir.test', model: 'm', keyEnv: 'YX_TEST_KEY', maxCostUsd: '0.10' })
+  const ref = join(mkdtempSync(join(tmpdir(), 'yx-yir-')), 'coin.png')
+  writeFileSync(ref, 'png')
+  await client.submit('a', '机位', { n: 1 }, [ref])
+  await client.submit('b', '关键帧', { n: 1 }, [ref])
+  expect(keys).toHaveLength(2)
+  expect(keys[1]?.startsWith(`${keys[0]}-`)).toBe(true)
+})
+
+test('a file refusal that is not retryable is not sent again', async () => {
+  let files = 0
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+    if (url.endsWith('/v1/models?include=parameters')) return json({ models: [{ id: 'm', operations: [{ operation: 'generate_image', parameters: [{ name: 'n', values: [1] }] }] }] })
+    if (url.endsWith('/v1/files') && init?.method === 'POST') {
+      files++
+      return json({ error: { code: 'BAD_FILE', message: 'refused', retryable: false } }, 400)
+    }
+    throw new Error(`unexpected ${url}`)
+  }) as typeof fetch
+  process.env.YX_TEST_KEY = 'k'
+  const client = yir({ baseUrl: 'https://yir.test', model: 'm', keyEnv: 'YX_TEST_KEY', maxCostUsd: '0.10' })
+  const ref = join(mkdtempSync(join(tmpdir(), 'yx-yir-')), 'coin.png')
+  writeFileSync(ref, 'png')
+  await expect(client.submit('a', '机位', { n: 1 }, [ref])).rejects.toThrow('BAD_FILE')
+  expect(files).toBe(1)
+})
+
 test('a parameter the contract does not declare is refused before anything is paid', async () => {
   fakeYir()
   process.env.YX_TEST_KEY = 'k'

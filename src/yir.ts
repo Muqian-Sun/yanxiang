@@ -82,12 +82,17 @@ export function yir(settings: ImageSettings, timeouts: { api?: number; transfer?
 
   // Two jobs with the same reference (a portrait's three-view and close-up) must not upload it at
   // the same moment under the same key: Yir's storage answered 500 to the second (M1, 2026-10-27).
-  const uploading = new Map<string, Promise<string>>()
+  // A file that did upload stays for this process, so a later picture does not register it again.
+  const uploaded = new Map<string, Promise<string>>()
   function upload(path: string): Promise<string> {
-    const pending = uploading.get(path) ?? uploadOnce(path)
-    uploading.set(path, pending)
-    void pending.finally(() => uploading.delete(path)).catch(() => {})
-    return pending
+    const pending = uploaded.get(path)
+    if (pending) return pending
+    const promise = uploadOnce(path)
+    uploaded.set(path, promise)
+    void promise.catch(() => {
+      if (uploaded.get(path) === promise) uploaded.delete(path)
+    })
+    return promise
   }
 
   async function uploadOnce(path: string): Promise<string> {
@@ -97,7 +102,12 @@ export function yir(settings: ImageSettings, timeouts: { api?: number; transfer?
     const body = { files: [{ name: basename(path), media_type: mediaType, size: content.length }] }
     // Yir refuses a reused key whose body differs, and the body carries the name.
     const key = `yanxiang-file-${createHash('sha256').update(content).digest('hex').slice(0, 32)}-${createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16)}`
-    const plan = await call<{ files: Array<{ id: string; status: string; upload?: { parts: Array<{ part_number: number; size: number; url: string }> } }> }>('POST', '/v1/files', body, key)
+    // Yir stores a 503 against this key and replays it on every later try (the style reference, 2026-10-28).
+    // The same body with a new key is accepted, so a retryable refusal here is asked once more.
+    const plan = await postFile(body, key).catch(error => {
+      if (!(error instanceof ImageError) || !error.retryable) throw error
+      return postFile(body, `${key}-${Date.now().toString(36)}`)
+    })
     const file = plan.files[0]!
     if (file.status === 'pending_upload') {
       let offset = 0
@@ -119,6 +129,10 @@ export function yir(settings: ImageSettings, timeouts: { api?: number; transfer?
       if (Date.now() > deadline) throw new ImageError('参考图迟迟没有就绪', true)
       await new Promise(resolve => setTimeout(resolve, 2000))
     }
+  }
+
+  function postFile(body: { files: Array<{ name: string; media_type: string; size: number }> }, idempotencyKey: string) {
+    return call<{ files: Array<{ id: string; status: string; upload?: { parts: Array<{ part_number: number; size: number; url: string }> } }> }>('POST', '/v1/files', body, idempotencyKey)
   }
 
   /** Quote, refuse what costs more than the cap, submit. The same key and body get the same Yir job back. */
