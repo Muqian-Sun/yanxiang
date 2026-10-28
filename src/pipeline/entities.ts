@@ -254,6 +254,24 @@ export async function draw(env: EntityEnv, scope: string, run: NodeRun, inputs: 
 /** What a note on one candidate leaves as it was, per kind; the wording follows the three-view's 「都和参考图一致，不重新设计」. */
 const KEEP: Record<Kind, string> = { char: '脸、发型、服装、饰物、颜色、身形和构图', loc: '陈设、布局、光线、颜色和构图', prop: '形制、材质、纹样、颜色和构图' }
 
+/** What a root picture is drawn from besides its description, as the prompt names them. */
+function pictureLabels(store: Store, scope: string): string[] {
+  const { kind, name, costume } = parse(scope)
+  if (costume) return [`${name}的定妆照`]
+  if (kind !== 'loc') return []
+  return ['风格参考图', ...placedProps(store, name, text(store.locked('entity_brief', scope)!)).map(p => `${p}的设定图`)]
+}
+
+function pictureBody(root: string, scope: string, desc: string): string {
+  const { name, costume } = parse(scope)
+  return costume ? `${readFileSync(join(root, 'config/prompts/costume.md'), 'utf8').trim().replaceAll('{{name}}', name)}\n\n${desc}` : desc
+}
+
+/** The prompt a root picture would be drawn with from this description, for the creator to read before paying for it. */
+export function picturePrompt(env: EntityEnv, scope: string, desc: string): string {
+  return imagePrompt(env.root, env.style, PICTURE[parse(scope).kind], pictureBody(env.root, scope, desc), pictureLabels(env.store, scope))
+}
+
 export const lockedImage = (store: Store, scope: string) => {
   const lock = store.locked('entity_lock', scope)
   return lock ? { lock, image: store.artifact((lock.payload as { image_id: number }).image_id) } : undefined
@@ -287,17 +305,12 @@ const picture: NodeDef = {
   },
   async run(env, scope, run, inputs) {
     const e = env as EntityEnv
-    const { kind, name, costume } = parse(scope)
-    const lockedMedia = (id: number) => e.store.artifact((e.store.artifact(id).payload as { image_id: number }).image_id)
-    const desc = text(e.store.artifact(inputs[0]!))
-    const refs = costume ? [{ label: `${name}的定妆照`, media: lockedMedia(inputs[1]!).media_id! }] : kind !== 'loc' ? [] : [
-      { label: '风格参考图', media: styleRefMedia(e) },
-      ...inputs.slice(2).map(id => {
-        const img = lockedMedia(id)
-        return { label: `${parse(img.scope).name}的设定图`, media: img.media_id! }
-      }),
-    ]
-    const body = costume ? `${readFileSync(join(e.root, 'config/prompts/costume.md'), 'utf8').trim().replaceAll('{{name}}', name)}\n\n${desc}` : desc
+    const { kind, costume } = parse(scope)
+    const lockedMedia = (id: number) => e.store.artifact((e.store.artifact(id).payload as { image_id: number }).image_id).media_id!
+    // In the order of pictureLabels: the opening portrait, or the style picture and the placed props (ready's inputs).
+    const media = costume ? [lockedMedia(inputs[1]!)] : kind !== 'loc' ? [] : [styleRefMedia(e), ...inputs.slice(2).map(lockedMedia)]
+    const refs = pictureLabels(e.store, scope).map((label, i) => ({ label, media: media[i]! }))
+    const body = pictureBody(e.root, scope, text(e.store.artifact(inputs[0]!)))
     if (!run.instruction) return draw(e, scope, run, inputs, PICTURE[kind], body, refs, CANDIDATES)
     // The creator's note on one candidate (Engine.edit): drawn from that candidate, which goes into the review beside the new ones.
     const from = e.store.artifact(run.previous_id!)

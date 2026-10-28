@@ -299,6 +299,22 @@ const view: NodeDef = {
   },
 }
 
+/** The pictures a keyframe is drawn from, as its description and its prompt number them. */
+function keyframeLabels(store: Store, scope: string): string[] {
+  const { segment, cut, id } = cutAt(store, scope)!
+  return [
+    ...cut.present.characters.map(name => figure(store, segment, cut, name).label),
+    viewOf(store, cutLocation(segment, cut), id)!.label,
+    ...cut.present.props.map(name => `${name}的设定图`),
+    '风格参考图',
+  ]
+}
+
+/** The prompt a keyframe would be drawn with from this description, for the creator to read before paying for it. */
+export function keyframePrompt(env: EntityEnv, scope: string, desc: string): string {
+  return imagePrompt(env.root, env.style, 'keyframe', desc, keyframeLabels(env.store, scope))
+}
+
 const kfdesc: NodeDef = {
   name: 'kfdesc',
   pool: 'text',
@@ -323,12 +339,7 @@ const kfdesc: NodeDef = {
     const { segment, timeline, cut, id } = cutAt(store, scope)!
     const tl = timeline.payload as TimelineT
     const second = tl.timeline.find(entry => entry.second === Math.floor(cut.start))
-    const refs = [
-      ...cut.present.characters.map(name => figure(store, segment, cut, name).label),
-      viewOf(store, cutLocation(segment, cut), id)!.label,
-      ...cut.present.props.map(name => `${name}的设定图`),
-      '风格参考图',
-    ].map((label, i) => `图 ${i + 1}：${label}`)
+    const refs = keyframeLabels(store, scope).map((label, i) => `图 ${i + 1}：${label}`)
     const colors = cut.present.characters.map(name => `${name}：${pick(text(store.locked('entity_brief', lookAt(store, name, segment.beats[0]!))!), '主色').replace('主色：', '')}`)
     const furnishing = pick(text(store.locked('entity_brief', scopeOf('loc', cutLocation(segment, cut)))!), '陈设')
     const atCut = cutState(store, scope)!
@@ -370,19 +381,13 @@ const keyframe: NodeDef = {
   },
   async run(env, scope, run, inputs) {
     const e = env as EntityEnv
-    const { segment, cut, id } = cutAt(e.store, scope)!
+    const { cut } = cutAt(e.store, scope)!
     const mediaOf = (lockId: number) => e.store.artifact((e.store.artifact(lockId).payload as { image_id: number }).image_id).media_id!
-    const chars = inputs.slice(3, 3 + cut.present.characters.length)
-    const props = inputs.slice(3 + cut.present.characters.length)
-    const refs = [
-      ...chars.map((lockId, i) => ({ label: figure(e.store, segment, cut, cut.present.characters[i]!).label, media: mediaOf(lockId) })),
-      { label: viewOf(e.store, cutLocation(segment, cut), id)!.label, media: mediaOf(inputs[1]!) },
-      ...props.map((lockId, i) => ({ label: `${cut.present.props[i]}的设定图`, media: mediaOf(lockId) })),
-      { label: '风格参考图', media: styleRefMedia(e) },
-    ]
+    // In the order of keyframeLabels: the people, the view, the props, the style picture.
+    const media = [...inputs.slice(3, 3 + cut.present.characters.length).map(mediaOf), mediaOf(inputs[1]!), ...inputs.slice(3 + cut.present.characters.length).map(mediaOf), styleRefMedia(e)]
+    const refs = keyframeLabels(e.store, scope).map((label, i) => ({ label, media: media[i]! }))
     if (!e.images) throw new Error('没有配置出图服务')
-    const body = (e.store.artifact(inputs[0]!).payload as { text: string }).text
-    const prompt = imagePrompt(e.root, e.style, 'keyframe', body, refs.map(r => r.label))
+    const prompt = keyframePrompt(e, scope, (e.store.artifact(inputs[0]!).payload as { text: string }).text)
     const drawn = await image(e.store, e.images, { type: 'keyframe', prompt, params: imageParams('keyframe'), references: refs.map(r => r.media), node_run_id: run.id, candidate: 1 }, e.sleep)
     return [e.store.addArtifact({ kind: 'keyframe', scope, payload: { job_id: drawn.job, prompt }, media_id: drawn.media, inputs, node_run_id: run.id, created_by: 'model' }).id]
   },

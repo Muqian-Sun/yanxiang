@@ -41,7 +41,7 @@ function fakeText(calls: { task: string; sections: Section[]; data?: unknown }[]
     const asked = sections.find(s => s.title === '创作者的修改意见')?.body
     const change = asked && !asked.startsWith('它用到的上游') ? `\n修改：${asked}` : ''
     const costume = sections.find(s => s.title === '这一套造型')?.body
-    const output = card.name === 'character-design' ? `脸型：长脸\n身高：比门框矮半头\n主色：白\n区分：散发${costume ? `\n造型：${costume}` : ''}${change}` : card.name === 'location-design' ? `陈设：石台居中\n道具位置：石台在洞中央${change}` : card.name === 'prop-design' ? `形制：长方${change}` : `${card.name}：${sections[0]!.body}`
+    const output = card.name === 'character-design' ? `脸型：长脸\n身高：比门框矮半头\n主色：白\n区分：散发${costume ? `\n造型：${costume}` : ''}${change}` : card.name === 'location-design' ? `陈设：石台居中\n道具位置：石台在洞中央${change}` : card.name === 'prop-design' ? `形制：长方${change}` : `${card.name}：${sections[0]!.body}${change ? `${change}。` : ''}`
     return { output, raw: output, attempts: [], system: '', user: '', promptVersion: 'v', model: 'fake' }
   }
 }
@@ -419,7 +419,7 @@ test('a node whose readiness check throws is reported once and skipped; the othe
   expect(events.filter(x => x.startsWith('failed bad'))).toEqual(['failed bad 调度时出错：旧数据缺字段'])
 })
 
-test('a note on a portrait rewrites its description, and the picture is drawn again from it; a turnaround takes no note', async () => {
+test('a note on a portrait rewrites its description, which comes back for review with the prompt before the picture is drawn again; a turnaround takes no note', async () => {
   const store = project()
   const calls: { task: string; sections: Section[] }[] = []
   const images = fakeImages()
@@ -437,9 +437,30 @@ test('a note on a portrait rewrites its description, and the picture is drawn ag
   await round(e)
   const rewrite = calls.filter(c => c.task === 'portrait-desc').at(-1)!
   expect(rewrite.sections.find(s => s.title === '创作者的修改意见')!.body).toBe('头发改成半束')
+
+  // The rewritten description waits at ★5 with the note, what changed and the prompt; nothing is drawn meanwhile.
   const drawn = images.submits.length
+  const descReview = store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!
+  const desc = store.artifact(descReview.artifact_ids[0]!)
+  expect(desc.kind).toBe('entity_desc')
+  await round(e)
+  expect(images.submits.length).toBe(drawn)
+  const shown = context(store, desc, e.env as EntityEnv)
+  expect(shown.find(c => c.title === '你的意见')!.body).toBe('头发改成半束')
+  expect(shown.find(c => c.title === '和上一版比')!.body).toBe('新加：修改：头发改成半束。')
+  const prompt = shown.find(c => c.title === '这次出图的提示词')!.body
+
+  // A further note keeps it in review; approving it lets the picture be drawn, with the prompt shown.
+  e.revise(desc.id, '发带换成青色', descReview.id)
+  await round(e)
+  const again = store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!
+  expect(store.artifact(again.artifact_ids[0]!).kind).toBe('entity_desc')
+  const shownAgain = context(store, store.artifact(again.artifact_ids[0]!), e.env as EntityEnv).find(c => c.title === '这次出图的提示词')!.body
+  e.pick(again.id, again.artifact_ids[0]!)
   await round(e)
   expect(images.submits.length).toBe(drawn + 2)
+  expect(images.submits.at(-1)).toBe(shownAgain)
+  expect(shownAgain).not.toBe(prompt)
   e.pick(store.openReviews().find(r => r.point === 5 && r.scope === 'e1/char/谢无咎')!.id, store.latest('entity_image', 'e1/char/谢无咎', ['draft'])!.id)
   await round(e)
   const turnaround = store.openReviews().find(r => r.scope === 'e1/char/谢无咎/三视图')!

@@ -6,8 +6,9 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Engine, Gpu } from '../pipeline/engine.js'
-import { designScope } from '../pipeline/entities.js'
-import { cutState, segmentState } from '../pipeline/storyboard.js'
+import { designScope, picturePrompt, type EntityEnv } from '../pipeline/entities.js'
+import { cutState, keyframePrompt, segmentState } from '../pipeline/storyboard.js'
+import { lcs } from '../video/subtitles.js'
 import type { Artifact, Store } from '../store/store.js'
 import type { Stories } from './storyflow.js'
 import { describePending } from './env.js'
@@ -26,10 +27,37 @@ const IMAGE_USD = 0.0085
 
 const UNCHANGED = '没有变化，和锁定的图一样'
 
-/** What the creator needs beside an artifact to judge it: the design it was drawn from, the description, what has changed by then. */
-export function context(store: Store, a: Artifact): { title: string; body: string }[] {
+const sentences = (t: string) => t.split(/(?<=[。！？；])|\n/).map(s => s.trim()).filter(Boolean)
+
+/** Sentences dropped from `previous` and added in `next`, by longest common subsequence. */
+export function changedSentences(previous: string, next: string): { removed: string[]; added: string[] } {
+  const a = sentences(previous)
+  const b = sentences(next)
+  const match = lcs(a, b)
+  const kept = new Set(match.filter(j => j >= 0))
+  return { removed: a.filter((_, i) => match[i] === -1), added: b.filter((_, j) => !kept.has(j)) }
+}
+
+/**
+ * What the creator needs beside an artifact to judge it: the design it was drawn from, the description,
+ * what has changed by then. A description rewritten for the creator's note also shows the note, what
+ * changed, and, given the engine's `env`, the exact prompt the picture would be drawn with.
+ */
+export function context(store: Store, a: Artifact, env?: EntityEnv): { title: string; body: string }[] {
   const text = (kind: string, scope: string) => (store.locked(kind, scope)?.payload as { text?: string } | undefined)?.text
   const out: { title: string; body: string }[] = []
+  const run = a.node_run_id ? store.nodeRun(a.node_run_id) : undefined
+  if (run?.review && run.instruction) {
+    out.push({ title: '你的意见', body: run.instruction })
+    const before = run.previous_id ? (store.artifact(run.previous_id).payload as { text?: string }).text : undefined
+    const now = (a.payload as { text?: string }).text
+    if (before !== undefined && now !== undefined) {
+      const { removed, added } = changedSentences(before, now)
+      out.push({ title: '和上一版比', body: [...removed.map(s => `删掉：${s}`), ...added.map(s => `新加：${s}`)].join('\n') || '一字未改' })
+    }
+  }
+  if (env && a.kind === 'entity_desc') out.push({ title: '这次出图的提示词', body: picturePrompt(env, a.scope, (a.payload as { text: string }).text) })
+  if (env && a.kind === 'keyframe_desc') out.push({ title: '这次出图的提示词', body: keyframePrompt(env, a.scope, (a.payload as { text: string }).text) })
   if (a.kind === 'entity_image') {
     const brief = text('entity_brief', designScope(a.scope))
     if (brief) out.push({ title: '外观要点', body: brief })
@@ -80,7 +108,7 @@ function state(store: Store, engine: Engine, gpu: Gpu) {
       const a = store.artifact(id)
       const media = a.media_id ? (store.db.prepare('SELECT mime FROM media WHERE id = ?').get(a.media_id) as { mime: string }) : undefined
       const timeline = a.kind === 'clip_draft' ? store.locked('timeline', a.scope)?.payload : undefined
-      return { id: a.id, kind: a.kind, version: a.version, payload: a.payload, media: a.media_id, mime: media?.mime, context: context(store, a), timeline, revisable: engine.revisable(a.id), editable: engine.editable(a.id) }
+      return { id: a.id, kind: a.kind, version: a.version, payload: a.payload, media: a.media_id, mime: media?.mime, context: context(store, a, engine.env as EntityEnv), timeline, revisable: engine.revisable(a.id), editable: engine.editable(a.id) }
     }),
   }))
   const unknown = store.jobs(['unknown']).map(j => ({ id: j.id, error: j.error }))

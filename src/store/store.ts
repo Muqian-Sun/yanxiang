@@ -33,7 +33,7 @@ export type NewArtifact = {
 export type Project = { id: number; name: string; entry: 'idea' | 'novel' | 'script'; style: string; genre: string; seconds_min: number; seconds_max: number; delivery: '720p' | '1080p'; created_at: string }
 export type Review = { id: number; point: number; scope: string; artifact_ids: number[]; status: 'open' | 'closed'; opened_at: string; closed_at: string | null }
 export type NodeRunStatus = 'queued' | 'running' | 'waiting_review' | 'done' | 'failed'
-export type NodeRun = { id: number; node: string; scope: string; status: NodeRunStatus; attempt: number; error: string | null; started_at: string | null; ended_at: string | null; instruction: string | null; previous_id: number | null }
+export type NodeRun = { id: number; node: string; scope: string; status: NodeRunStatus; attempt: number; error: string | null; started_at: string | null; ended_at: string | null; instruction: string | null; previous_id: number | null; review: number | null }
 export type JobStatus = 'queued' | 'submitting' | 'submitted' | 'unknown' | 'downloading' | 'succeeded' | 'failed'
 export type Job = {
   id: number
@@ -323,8 +323,8 @@ export class Store {
     return (this.db.prepare(`SELECT * FROM artifact WHERE kind = ? AND scope = ? AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY version`).all(kind, scope, ...statuses) as Row[]).map(toArtifact)
   }
 
-  addNodeRun(node: string, scope: string, extra: { instruction?: string; previous_id?: number } = {}): NodeRun {
-    const id = Number(this.db.prepare("INSERT INTO node_run (node, scope, status, instruction, previous_id) VALUES (?, ?, 'queued', ?, ?)").run(node, scope, extra.instruction ?? null, extra.previous_id ?? null).lastInsertRowid)
+  addNodeRun(node: string, scope: string, extra: { instruction?: string; previous_id?: number; review?: number } = {}): NodeRun {
+    const id = Number(this.db.prepare("INSERT INTO node_run (node, scope, status, instruction, previous_id, review) VALUES (?, ?, 'queued', ?, ?, ?)").run(node, scope, extra.instruction ?? null, extra.previous_id ?? null, extra.review ?? null).lastInsertRowid)
     return this.nodeRun(id)
   }
 

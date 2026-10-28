@@ -196,10 +196,11 @@ export class Engine {
           // An input went stale while this ran: the next tick runs it again on the new inputs.
           store.setNodeRun(run.id, 'done')
           this.say({ type: 'stale', node: def.name, scope })
-        } else if (def.review) {
-          store.openReview(def.review, scope, ids)
+        } else if (def.review ?? current.review) {
+          const point = (def.review ?? current.review)!
+          store.openReview(point, scope, ids)
           store.setNodeRun(run.id, 'waiting_review')
-          this.say({ type: 'review', node: def.name, scope, detail: `★${def.review}` })
+          this.say({ type: 'review', node: def.name, scope, detail: `★${point}` })
         } else {
           store.tx(() => ids.forEach(id => store.lock(id)))
           store.setNodeRun(run.id, 'done')
@@ -277,7 +278,10 @@ export class Engine {
     const target = def.paid ? def.reviseVia?.(store, a) : a
     if (!target) throw new Error(`${def.name} 这一步没有可改的文字，写意见改不了，只能「重出」`)
     const targetDef = target === a ? def : this.nodeFor(target.kind, target.scope)
-    const queue = () => store.addNodeRun(targetDef.name, target.scope, { instruction, previous_id: target.id })
+    // The rewritten text comes back for review at the output's own point before anything is paid
+    // (creator, 2026-10-28); a further note on that text keeps it there.
+    const point = target === a ? (a.node_run_id ? store.nodeRun(a.node_run_id).review : null) : def.review
+    const queue = () => store.addNodeRun(targetDef.name, target.scope, { instruction, previous_id: target.id, review: point ?? undefined })
     if (reviewId === undefined) return void store.tx(queue)
     const review = store.review(reviewId)
     store.decide(reviewId, { action: 'revise', artifact_id: artifactId, instruction }, () => {
