@@ -69,4 +69,8 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE artifact ADD COLUMN stale_from TEXT;
   `,
+  // The review point a run's output goes to when its node has none: a text rewritten for the creator's note on a picture or clip.
+  `
+  ALTER TABLE node_run ADD COLUMN review INTEGER;
+  `,
 ]

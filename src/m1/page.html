@@ -521,7 +521,7 @@ function scopeParts(scope) {
 }
 const scopeName = scope => scopeParts(scope).join(' ')
 const scopeHtml = scope => { const p = scopeParts(scope); return p.length > 1 ? '<span class="up">' + esc(p.slice(0, -1).join(' ')) + '</span>' + esc(p[p.length - 1]) : esc(p[0]) }
-const KIND = { entity_brief: '外观设计', entity_image: '设定图', keyframe: '关键帧', audition: '试音', clip_draft: '草稿', cut_draft: '整集草稿', cut_final: '交付片' }
+const KIND = { entity_brief: '外观设计', entity_desc: '出图描述', keyframe_desc: '关键帧描述', timeline: '时间轴', entity_image: '设定图', keyframe: '关键帧', audition: '试音', clip_draft: '草稿', cut_draft: '整集草稿', cut_final: '交付片' }
 function kindLabel(kind, scope) {
   const p = String(scope).split('/')
   if (kind === 'entity_image' && p.length === 4) return p[1] === 'loc' ? '机位图' : p[3]
@@ -595,7 +595,7 @@ document.addEventListener('timeupdate', e => {
 }, true)
 
 // ---------- reviews ----------
-const reviseHint = a => a.kind === 'entity_image' || a.kind === 'keyframe' ? '会先改描述，再重出图（要再授权）' : a.kind === 'clip_draft' ? '会改这一段的时间轴，关键帧和草稿都会重出' : '会带着这条意见重写'
+const reviseHint = a => a.kind === 'entity_image' || a.kind === 'keyframe' ? '会先改描述给你审，通过后再重出图（要再授权）' : a.kind === 'clip_draft' ? '会先改这一段的时间轴给你审，通过后关键帧和草稿再重出' : '会带着这条意见重写'
 function reviseBox(id, onsubmit, hint, label = '按意见重写') {
   return '<div class="revise" id="rv' + id + '"><label class="vh" for="rt' + id + '">修改意见</label><textarea id="rt' + id + '" name="revise-' + id + '" data-keep="rt' + esc(S.project) + '/' + id + '" autocomplete="off" aria-describedby="rvh' + id + '" placeholder="哪里不对、要怎么改…"></textarea>' +
     '<div class="note-bar"><span class="hint" id="rvh' + id + '">' + esc(hint) + '</span><button type="button" class="btn sm quiet" onclick="toggleRv(' + id + ')">收起</button><button type="button" class="btn sm primary" onclick="' + onsubmit + '">' + icon('edit') + label + '</button></div></div>'
@@ -633,6 +633,7 @@ function mediaOf(a, r, eager) {
   if (a.media && a.mime && a.mime.startsWith('image/')) return '<div class="well">' + zimg(a.media, scopeName(r.scope) + ' ' + kindLabel(a.kind, r.scope) + '，第 ' + a.version + ' 版', shapeOf(r.scope), eager) + '</div>'
   if (a.media && a.mime === 'video/mp4') return '<div class="clip' + (a.timeline ? '' : ' solo') + '"><div class="well"><video id="v' + a.id + '" controls preload="metadata" src="' + media(a.media) + '"></video></div>' + (a.timeline ? tlTable(a.timeline, a.id, true) : '') + '</div>'
   if (a.media && a.mime && a.mime.startsWith('audio/')) return '<audio controls src="' + media(a.media) + '"></audio>'
+  if (a.kind === 'timeline') return tlTable(p, a.id, false)
   if (p.text && !a.media) return '<div class="reading"><div>' + esc(p.text) + '</div></div>'
   return ''
 }
@@ -645,7 +646,7 @@ function infoOf(a) {
   if (p.adjusted && p.adjusted.length) h += '<div class="notice">' + icon('alert') + '<span>这些段的裁剪超出允许范围，被程序收紧过：' + esc(p.adjusted.join('、')) + '</span></div>'
   if (p.checks) h += '<table class="checks"><tbody>' + p.checks.map(c => '<tr><td>' + esc(c.check) + '</td><td>' + (c.ok ? '<span class="tag green">通过</span> ' : '<span class="tag red">不通过</span> ') + esc(c.detail) + '</td></tr>').join('') + '</tbody></table><div class="hint">交付文件夹：<span translate="no">' + esc(p.folder) + '</span></div>'
   let drawers = ''
-  for (const c of a.context) drawers += drawer(c.title, '<pre>' + esc(c.body) + '</pre>', 'c' + a.id + c.title)
+  for (const c of a.context) drawers += drawer(c.title, '<pre>' + esc(c.body) + '</pre>', 'c' + a.id + c.title, '', c.title === '你的意见' || c.title === '和上一版比')
   if (p.prompt) drawers += drawer('提示词', '<pre>' + esc(p.prompt) + '</pre>', 'p' + a.id)
   return h + (drawers ? '<div class="drawers">' + drawers + '</div>' : '')
 }

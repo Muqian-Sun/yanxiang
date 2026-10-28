@@ -220,6 +220,23 @@ test('cuts worded differently but from the same camera share one view picture; t
   expect(shown('e1/g1/c2')).toBe('没有变化，和锁定的图一样')
   const clip = store.addArtifact({ kind: 'clip_draft', scope: 'e1/g2', payload: {}, created_by: 'model' })
   expect(context(store, clip)).toEqual([{ title: '这一段开始时的状态', body: '锁链束住双腕\n婚书展开' }])
+
+  // A note on a keyframe rewrites its description, which comes back at ★6 with the prompt it would be drawn with.
+  const first = store.openReviews().find(r => r.scope === 'e1/g1/c1')!
+  e.revise(first.artifact_ids[0]!, '谢无咎再靠左', first.id)
+  await round(e)
+  const descReview = store.openReviews().find(r => r.scope === 'e1/g1/c1')!
+  expect(descReview.point).toBe(6)
+  expect(store.artifact(descReview.artifact_ids[0]!).kind).toBe('keyframe_desc')
+  const noted = context(store, store.artifact(descReview.artifact_ids[0]!), e.env as EntityEnv)
+  expect(noted.find(c => c.title === '你的意见')!.body).toBe('谢无咎再靠左')
+  const preview = noted.find(c => c.title === '这次出图的提示词')!.body
+  store.grant('e1/g1/c1', 'image', 1)
+  await round(e)
+  expect(store.latest('keyframe', 'e1/g1/c1')!.status).toBe('superseded')
+  e.approve(descReview.id)
+  await round(e)
+  expect(prompt('e1/g1/c1')).toBe(preview)
 })
 
 /** A locked picture at `scope`, as if ★5 were done. */
