@@ -190,7 +190,7 @@ test('plan waits for every root entity lock, then timelines follow; a continues 
   expect(store.locked('timeline', 'e1/g2')).toBeUndefined()
   const g1 = calls.find(c => c.task === 'timeline' && c.sections[0]!.body.startsWith('g1'))!
   expect(g1.sections.find(s => s.title === '这一段开始时的状态')!.body).toBe('')
-  expect(g1.sections.find(s => s.title === '地点的格局')!.body).toBe('封剑洞\n格局：洞口朝南\n陈设：石台居中')
+  expect(g1.sections.find(s => s.title === '地点的格局')).toBeUndefined()
   expect(g1.sections.find(s => s.title === '站位')!.body).toBe([
     '封剑洞的位置（画面左右是主图的左右）：', '石台前（站位）：石台靠镜头一侧，主图画面中央',
     '这一段开始时：', '还没有人在场',
@@ -232,7 +232,9 @@ test('cuts worded differently but from the same camera share one view picture; t
   store.grant('e1/loc/封剑洞', 'image', 1)
   await round(e)
   expect(images.submits).toHaveLength(1)
-  expect(calls.find(c => c.task === 'location-view-desc')!.sections.find(s => s.title === '需要的视角')!.body).toBe('站在石台侧面看向洞口')
+  const viewCall = calls.find(c => c.task === 'location-view-desc')!
+  expect(viewCall.sections.find(s => s.title === '需要的视角')!.body).toBe('站在石台侧面看向洞口')
+  expect(viewCall.sections.find(s => s.title === '地点的外观要点')).toBeUndefined()
   e.approve(store.openReviews().find(r => r.scope === 'e1/loc/封剑洞/侧面')!.id)
   await round(e)
   expect(store.locked('keyframe_desc', 'e1/g1/c2')).toBeTruthy()
@@ -242,9 +244,11 @@ test('cuts worded differently but from the same camera share one view picture; t
   for (const cut of ['e1/g1/c1', 'e1/g1/c2', 'e1/g2/c2']) store.grant(cut, 'image', 1)
   await round(e)
   const prompt = (scope: string) => (store.latest('keyframe', scope)!.payload as { prompt: string }).prompt
-  expect(prompt('e1/g1/c1')).toContain('图 2 是封剑洞的主图。')
-  expect(prompt('e1/g1/c2')).toContain('图 3 是封剑洞的侧面。')
-  expect(prompt('e1/g2/c2')).toContain('图 2 是封剑洞的侧面。')
+  expect(prompt('e1/g1/c1')).toContain('图 1 是封剑洞的主图。')
+  expect(prompt('e1/g1/c1')).toContain('图 1 是这个机位的空房间')
+  expect(prompt('e1/g1/c2')).toContain('图 1 是封剑洞的侧面。')
+  expect(prompt('e1/g2/c2')).toContain('图 1 是封剑洞的侧面。')
+  expect(prompt('e1/g2/c2')).not.toContain('已经通过的关键帧')
   expect(store.latest('keyframe', 'e1/g2/c1')).toBeUndefined()
 
   // The review shows what has changed by each picture, as its description was told.
@@ -254,11 +258,13 @@ test('cuts worded differently but from the same camera share one view picture; t
   expect(shown('e1/g2/c2')).toBe('锁链束住双腕\n婚书展开')
   expect(told(1)).toBe('')
   expect(shown('e1/g1/c2')).toBe('没有变化，和锁定的图一样')
-  // It is told what its camera position shows, where the light comes from and where everyone is.
-  const section = (n: number, title: string) => calls.filter(c => c.task === 'keyframe-desc')[n]!.sections.find(s => s.title === title)!.body
-  expect(section(0, '这个视角')).toBe('主图：封剑洞描述')
-  expect(section(1, '这个视角')).toBe('相机：站在石台侧面看向洞口\n这个机位的图：从侧面看石台，洞口在画面右侧。')
-  expect(section(0, '光源')).toBe('光源：洞口天光从南面照入')
+  // It is told where the camera stands and where everyone is. The room is the locked picture, not the old description.
+  const section = (n: number, title: string) => calls.filter(c => c.task === 'keyframe-desc')[n]!.sections.find(s => s.title === title)?.body
+  expect(section(0, '这个视角')).toBe('相机就是主图的机位。房间以主图为准。')
+  expect(section(1, '这个视角')).toBe('相机：站在石台侧面看向洞口\n房间以这个机位的图为准。')
+  expect(section(0, '场内陈设')).toBeUndefined()
+  expect(section(0, '光源')).toBeUndefined()
+  expect(section(0, '这个视角')).not.toContain('封剑洞描述')
   expect(section(2, '站位')).toContain('这一段开始时：\n谢无咎：石台前，站着，背对镜头')
   const clip = store.addArtifact({ kind: 'clip_draft', scope: 'e1/g2', payload: {}, created_by: 'model' })
   expect(context(store, clip)).toEqual([{ title: '这一段开始时的状态', body: '锁链束住双腕\n婚书展开' }])
@@ -309,10 +315,10 @@ test('a cut binds the costume worn through its segment, and a name for several p
   for (const cut of ['e1/g1/c1', 'e1/g1/c2', 'e1/g2/c2']) store.grant(cut, 'image', 1)
   await round(e)
   const prompt = (scope: string) => (store.latest('keyframe', scope)!.payload as { prompt: string }).prompt
-  expect(prompt('e1/g1/c1')).toContain('图 1 是谢无咎的服装平铺（2 个人都穿这一套，脸和身形各不相同）。')
+  expect(prompt('e1/g1/c1')).toContain('图 2 是谢无咎的服装平铺（2 个人都穿这一套，脸和身形各不相同）。')
   // Before the change she wears the opening costume; the segment that starts at it binds the new one and its colours.
-  expect(prompt('e1/g1/c2')).toContain('图 2 是柳含烟的定妆照。')
-  expect(prompt('e1/g2/c2')).toContain('图 1 是柳含烟（嫁衣）的定妆照。')
+  expect(prompt('e1/g1/c2')).toContain('图 3 是柳含烟的定妆照。')
+  expect(prompt('e1/g2/c2')).toContain('图 2 是柳含烟（嫁衣）的定妆照。')
   const g2c2 = calls.filter(c => c.task === 'keyframe-desc').find(c => c.sections.find(s => s.title === '参考图')!.body.includes('嫁衣'))!
   expect(g2c2.sections.find(s => s.title === '人物主色')!.body).toBe('柳含烟：大红')
 })
