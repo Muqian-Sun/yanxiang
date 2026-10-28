@@ -113,7 +113,7 @@ for (const [i, person] of script.roster.characters.entries()) {
   const text = await call<string>('character-design', `character-design-${i + 1}`, [
     { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
     { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
-    { title: '和他有关的道具', body: script.roster.props.filter(prop => prop.holder.includes(person.name)).map(prop => `${prop.name}：${prop.holder}`).join('\n') },
+    { title: '和他有关的道具', body: script.roster.props.filter(prop => prop.holder.includes(person.name)).map(prop => prop.name).join('、') },
     { title: '同集其他人物', body: others.join('\n') },
   ])
   if (text) designs.set(`char:${person.name}`, text)

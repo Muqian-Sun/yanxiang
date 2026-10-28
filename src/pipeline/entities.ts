@@ -106,7 +106,8 @@ const brief: NodeDef = {
       sections = [
         { title: '人物卡', body: `${person.name}：${person.gender}，看起来${person.age_look.replace(/^看起来/, '')}，${person.rank}，${person.tier}；本集要${person.needs.replace(/^本集要/, '')}；${person.temperament}` },
         { title: '剧本里写到他外貌的原句', body: person.appearance_lines.join('\n') },
-        { title: '和他有关的道具', body: ep.roster.props.filter(p => p.holder.includes(name)).map(p => `${p.name}：${p.holder}`).join('\n') },
+        // Names only: a holder is how the prop changes hands over the episode, which is no part of a costume.
+        { title: '和他有关的道具', body: ep.roster.props.filter(p => p.holder.includes(name)).map(p => p.name).join('、') },
         { title: '同集其他人物', body: earlier.map(a => `${parse(a.scope).name}：${[pick(text(a), '主色').replace('主色：', '主色 '), pick(text(a), '区分').replace('区分：', ''), pick(text(a), '身高').replace('身高：', '身高 ')].filter(Boolean).join('；')}`).join('\n') },
       ]
     } else if (kind === 'loc') {

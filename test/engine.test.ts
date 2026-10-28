@@ -83,6 +83,17 @@ test('the second character is designed after the first, seeing its colours', asy
   expect(second.sections.find(s => s.title === '同集其他人物')!.body).toBe('谢无咎：主色 白；散发；身高 比门框矮半头')
 })
 
+test('a character is told the names of his props, not how they change hands', async () => {
+  const store = project()
+  const calls: { task: string; sections: Section[] }[] = []
+  const e = engine(store, fakeText(calls))
+  await round(e)
+  await round(e)
+  const props = (name: string) => calls.find(c => c.task === 'character-design' && c.sections[0]!.body.startsWith(name))!.sections.find(s => s.title === '和他有关的道具')!.body
+  expect(props('谢无咎')).toBe('')
+  expect(props('柳含烟')).toBe('婚书')
+})
+
 test('props are designed in order, and a location waits for its props and is told who holds them', async () => {
   const store = project()
   const calls: { task: string; sections: Section[] }[] = []
